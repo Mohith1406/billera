@@ -5,43 +5,27 @@ import { Button } from "@/components/ui/button";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
 import { Check } from "lucide-react";
-
-// Mock template data - in a real app this would come from an API or be more extensive
-const templates = [
-  {
-    id: "professional",
-    name: "Professional",
-    image: "/placeholder.svg",
-  },
-  {
-    id: "modern",
-    name: "Modern",
-    image: "/placeholder.svg",
-  },
-  {
-    id: "classic",
-    name: "Classic",
-    image: "/placeholder.svg",
-  },
-  {
-    id: "minimal",
-    name: "Minimal",
-    image: "/placeholder.svg",
-  }
-];
+import { useNavigate } from "react-router-dom";
 
 const TemplateSelection = () => {
-  const { invoiceData, setInvoiceData, setCurrentStep } = useInvoice();
+  const { invoiceData, setInvoiceData, setCurrentStep, availableTemplates } = useInvoice();
+  const navigate = useNavigate();
 
   useEffect(() => {
     setCurrentStep(1);
   }, [setCurrentStep]);
 
-  const selectTemplate = (template: typeof templates[0]) => {
+  const selectTemplate = (template: typeof availableTemplates[0]) => {
     setInvoiceData((prev) => ({
       ...prev,
       template: template,
     }));
+  };
+
+  const handleNext = () => {
+    if (invoiceData.template) {
+      navigate("/business-client-info");
+    }
   };
 
   return (
@@ -50,12 +34,12 @@ const TemplateSelection = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-3">Select Invoice Template</h1>
           <p className="text-muted-foreground">
-            Choose a template that matches your brand and style. You can always preview how your invoice will look.
+            Choose a template that matches your brand and style. Each template offers a different layout and design aesthetic.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {templates.map((template) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          {availableTemplates.map((template) => (
             <Card 
               key={template.id}
               className={`cursor-pointer overflow-hidden transition-all hover:shadow-md ${
@@ -78,10 +62,21 @@ const TemplateSelection = () => {
                 )}
               </div>
               <CardContent className="p-4">
-                <h3 className="font-medium text-center">{template.name}</h3>
+                <h3 className="font-medium text-lg mb-1">{template.name}</h3>
+                <p className="text-sm text-muted-foreground">{template.description}</p>
               </CardContent>
             </Card>
           ))}
+        </div>
+
+        <div className="flex justify-end">
+          <Button 
+            size="lg" 
+            onClick={handleNext}
+            disabled={!invoiceData.template}
+          >
+            Continue
+          </Button>
         </div>
       </div>
     </Layout>

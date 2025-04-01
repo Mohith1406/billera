@@ -8,10 +8,17 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import Layout from "@/components/Layout";
-import { Download, Printer, Mail, Check } from "lucide-react";
+import { Download, Printer, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { 
+  ProfessionalTemplate, 
+  ModernTemplate, 
+  ClassicTemplate, 
+  MinimalTemplate, 
+  CreativeTemplate 
+} from "@/templates/InvoiceTemplates";
 
 const ExportInvoice = () => {
   const { invoiceData, setInvoiceData, setCurrentStep } = useInvoice();
@@ -122,6 +129,38 @@ const ExportInvoice = () => {
       title: "Print Feature Coming Soon",
       description: "The print functionality will be available in a future update."
     });
+  };
+
+  // Render the appropriate template based on the selected template
+  const renderTemplate = () => {
+    if (!invoiceData.template) {
+      return (
+        <div className="p-8 border rounded-md bg-gray-50 flex items-center justify-center min-h-[500px]">
+          <p className="text-muted-foreground">Please select a template to preview your invoice</p>
+        </div>
+      );
+    }
+
+    const templateProps = {
+      invoiceData,
+      formatCurrency,
+      innerRef: invoiceRef
+    };
+
+    switch (invoiceData.template.id) {
+      case "professional":
+        return <ProfessionalTemplate {...templateProps} />;
+      case "modern":
+        return <ModernTemplate {...templateProps} />;
+      case "classic":
+        return <ClassicTemplate {...templateProps} />;
+      case "minimal":
+        return <MinimalTemplate {...templateProps} />;
+      case "creative":
+        return <CreativeTemplate {...templateProps} />;
+      default:
+        return <ProfessionalTemplate {...templateProps} />;
+    }
   };
 
   return (
@@ -264,142 +303,8 @@ const ExportInvoice = () => {
               <CardContent className="pt-6 h-full">
                 <h2 className="text-xl font-semibold mb-4">Invoice Preview</h2>
                 
-                <div 
-                  ref={invoiceRef} 
-                  className="border rounded-md p-8 bg-white scale-100 transform origin-top-left overflow-auto max-h-[calc(100vh-12rem)] shadow-md w-full md:min-w-[500px] lg:min-w-[600px]"
-                >
-                  <div className="flex justify-between mb-8">
-                    <div>
-                      {invoiceData.businessInfo.logo ? (
-                        <img 
-                          src={invoiceData.businessInfo.logo} 
-                          alt="Business Logo" 
-                          className="h-16 mb-4 object-contain"
-                        />
-                      ) : (
-                        <div className="h-16 mb-4 font-bold text-xl text-primary">
-                          {invoiceData.businessInfo.name || "Your Business Name"}
-                        </div>
-                      )}
-                      <div className="text-sm space-y-1">
-                        <p className="font-semibold">{invoiceData.businessInfo.name || "Your Business Name"}</p>
-                        <p>{invoiceData.businessInfo.address || "Business Address"}</p>
-                        <p>
-                          {invoiceData.businessInfo.city ? invoiceData.businessInfo.city + ", " : ""}
-                          {invoiceData.businessInfo.state || ""}
-                          {invoiceData.businessInfo.zip ? " " + invoiceData.businessInfo.zip : ""}
-                        </p>
-                        <p>{invoiceData.businessInfo.country || ""}</p>
-                        <p>{invoiceData.businessInfo.phone || ""}</p>
-                        <p>{invoiceData.businessInfo.email || ""}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-primary mb-4">INVOICE</div>
-                      <div className="text-sm space-y-1">
-                        <p><span className="font-semibold">Invoice Number:</span> {invoiceData.invoiceNumber}</p>
-                        <p><span className="font-semibold">Date:</span> {invoiceData.invoiceDate}</p>
-                        <p><span className="font-semibold">Due Date:</span> {invoiceData.dueDate}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mb-8">
-                    <div className="font-semibold mb-2">Bill To:</div>
-                    <div className="text-sm space-y-1">
-                      <p className="font-semibold">{invoiceData.clientInfo.name || "Client Name"}</p>
-                      <p>{invoiceData.clientInfo.address || "Client Address"}</p>
-                      <p>
-                        {invoiceData.clientInfo.city ? invoiceData.clientInfo.city + ", " : ""}
-                        {invoiceData.clientInfo.state || ""}
-                        {invoiceData.clientInfo.zip ? " " + invoiceData.clientInfo.zip : ""}
-                      </p>
-                      <p>{invoiceData.clientInfo.country || ""}</p>
-                      <p>{invoiceData.clientInfo.phone || ""}</p>
-                      <p>{invoiceData.clientInfo.email || ""}</p>
-                    </div>
-                  </div>
-
-                  <table className="w-full text-sm mb-8">
-                    <thead>
-                      <tr className="bg-muted/30 border-t border-b">
-                        {invoiceData.columnVisibility.description && <th className="text-left py-2 px-2">Description</th>}
-                        {invoiceData.columnVisibility.quantity && <th className="text-right py-2 px-2">Qty</th>}
-                        {invoiceData.columnVisibility.unitPrice && <th className="text-right py-2 px-2">Price</th>}
-                        {invoiceData.columnVisibility.taxRate && <th className="text-right py-2 px-2">Tax %</th>}
-                        {invoiceData.columnVisibility.discount && <th className="text-right py-2 px-2">Disc %</th>}
-                        {invoiceData.columnVisibility.category && <th className="text-left py-2 px-2">Category</th>}
-                        {invoiceData.columnVisibility.total && <th className="text-right py-2 px-2">Total</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {invoiceData.lineItems.length > 0 ? (
-                        invoiceData.lineItems.map((item) => (
-                          <tr key={item.id} className="border-b">
-                            {invoiceData.columnVisibility.description && <td className="py-2 px-2">{item.description}</td>}
-                            {invoiceData.columnVisibility.quantity && <td className="py-2 px-2 text-right">{item.quantity}</td>}
-                            {invoiceData.columnVisibility.unitPrice && <td className="py-2 px-2 text-right">{formatCurrency(item.unitPrice)}</td>}
-                            {invoiceData.columnVisibility.taxRate && <td className="py-2 px-2 text-right">{item.taxRate}%</td>}
-                            {invoiceData.columnVisibility.discount && <td className="py-2 px-2 text-right">{item.discount}%</td>}
-                            {invoiceData.columnVisibility.category && <td className="py-2 px-2">{item.category || "-"}</td>}
-                            {invoiceData.columnVisibility.total && <td className="py-2 px-2 text-right">{formatCurrency(item.total)}</td>}
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td 
-                            colSpan={Object.values(invoiceData.columnVisibility).filter(Boolean).length} 
-                            className="py-4 text-center text-muted-foreground"
-                          >
-                            No items to display
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-
-                  <div className="flex justify-end mb-8">
-                    <div className="w-64">
-                      <div className="flex justify-between py-2">
-                        <span>Subtotal:</span>
-                        <span>{formatCurrency(invoiceData.subtotal)}</span>
-                      </div>
-                      {invoiceData.discountTotal > 0 && (
-                        <div className="flex justify-between py-2">
-                          <span>Discount:</span>
-                          <span>-{formatCurrency(invoiceData.discountTotal)}</span>
-                        </div>
-                      )}
-                      {invoiceData.taxTotal > 0 && (
-                        <div className="flex justify-between py-2">
-                          <span>Tax:</span>
-                          <span>{formatCurrency(invoiceData.taxTotal)}</span>
-                        </div>
-                      )}
-                      <Separator className="my-2" />
-                      <div className="flex justify-between py-2 font-bold">
-                        <span>Total:</span>
-                        <span>{formatCurrency(invoiceData.grandTotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {(invoiceData.notes || invoiceData.terms) && (
-                    <div className="space-y-4 mt-8 text-sm">
-                      {invoiceData.notes && (
-                        <div>
-                          <h3 className="font-semibold mb-1">Notes</h3>
-                          <p className="text-muted-foreground">{invoiceData.notes}</p>
-                        </div>
-                      )}
-                      {invoiceData.terms && (
-                        <div>
-                          <h3 className="font-semibold mb-1">Terms & Conditions</h3>
-                          <p className="text-muted-foreground">{invoiceData.terms}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                <div className="border rounded-md bg-gray-50 overflow-auto max-h-[calc(100vh-12rem)] shadow-md w-full md:min-w-[500px] lg:min-w-[600px]">
+                  {renderTemplate()}
                 </div>
                 
                 <div className="mt-4 text-center text-sm text-muted-foreground">

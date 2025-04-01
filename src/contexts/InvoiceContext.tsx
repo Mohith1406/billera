@@ -6,6 +6,7 @@ export type InvoiceTemplate = {
   id: string;
   name: string;
   image: string;
+  description?: string;
 };
 
 export type BusinessInfo = {
@@ -76,6 +77,7 @@ export type InvoiceData = {
 interface InvoiceContextType {
   invoiceData: InvoiceData;
   currentStep: number;
+  availableTemplates: InvoiceTemplate[];
   setInvoiceData: React.Dispatch<React.SetStateAction<InvoiceData>>;
   setCurrentStep: React.Dispatch<React.SetStateAction<number>>;
   updateBusinessInfo: (info: Partial<BusinessInfo>) => void;
@@ -87,6 +89,40 @@ interface InvoiceContextType {
   calculateTotals: () => void;
   resetInvoice: () => void;
 }
+
+// Available templates
+export const invoiceTemplates: InvoiceTemplate[] = [
+  {
+    id: "professional",
+    name: "Professional",
+    image: "/placeholder.svg",
+    description: "A clean, professional template suitable for most businesses"
+  },
+  {
+    id: "modern",
+    name: "Modern",
+    image: "/placeholder.svg",
+    description: "A contemporary design with a fresh, modern look"
+  },
+  {
+    id: "classic",
+    name: "Classic",
+    image: "/placeholder.svg",
+    description: "Traditional invoice layout with bordered tables"
+  },
+  {
+    id: "minimal",
+    name: "Minimal",
+    image: "/placeholder.svg",
+    description: "Simple, elegant design with minimal decorative elements"
+  },
+  {
+    id: "creative",
+    name: "Creative",
+    image: "/placeholder.svg",
+    description: "Stylish design with decorative elements and color accents"
+  },
+];
 
 // Initial state
 const defaultInvoiceData: InvoiceData = {
@@ -254,6 +290,7 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
       value={{
         invoiceData,
         currentStep,
+        availableTemplates: invoiceTemplates,
         setInvoiceData,
         setCurrentStep,
         updateBusinessInfo,

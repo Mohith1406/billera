@@ -622,7 +622,7 @@ export const CreativeTemplate: React.FC<TemplateProps> = ({ invoiceData, formatC
       <div className="flex flex-col md:flex-row justify-between items-start mb-12 gap-8">
         <div>
           <div className="inline-block bg-primary text-white px-6 py-3 rounded-lg mb-6">
-            <div className="text-2xl font-bold">INVOICE</div>
+            <p className="text-2xl font-bold">INVOICE</p>
           </div>
           <div>
             {invoiceData.businessInfo.logo ? (

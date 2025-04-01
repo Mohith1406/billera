@@ -12,6 +12,7 @@ import { Download, Printer, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import html2pdf from "html2pdf.js";
 import { 
   ProfessionalTemplate, 
   ModernTemplate, 
@@ -64,42 +65,37 @@ const ExportInvoice = () => {
       const originalStyle = invoiceRef.current.style.background;
       invoiceRef.current.style.background = "white";
       
-      const canvas = await html2canvas(invoiceRef.current, {
-        scale: 2,  // Higher scale for better quality
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff"
-      });
-      
-      // Restore original style
-      invoiceRef.current.style.background = originalStyle;
-      
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Calculate PDF dimensions based on canvas aspect ratio
-      const imgWidth = 210;  // A4 width in mm (210mm)
-      const pageHeight = 297;  // A4 height in mm (297mm)
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-      
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      
-      // Add new pages if the invoice is longer than one page
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      
       // Generate filename
       const fileName = `Invoice-${invoiceData.invoiceNumber}-${new Date().toISOString().split('T')[0]}.pdf`;
       
-      // Save the PDF
-      pdf.save(fileName);
+      await html2pdf()
+        .from(invoiceRef.current)
+        .set({
+          filename: fileName,
+          margin: [10, 10, 10, 10], // Add margins [top, right, bottom, left] in mm
+          html2canvas: {
+            scale: 4,  // Increased scale for higher quality
+            useCORS: true,
+            logging: false,
+            backgroundColor: "#ffffff",
+            letterRendering: true, // Improves text rendering
+            dpi: 300, // Higher DPI for better resolution
+            imageTimeout: 0, // No timeout for image loading
+          },
+          jsPDF: {
+            unit: "mm",
+            format: "a4",
+            orientation: "portrait",
+            compress: false, // No compression for better quality
+            precision: 16, // Higher precision for vector graphics
+            hotfixes: ["px_scaling"], // Fix scaling issues
+          },
+          pagebreak: { mode: 'avoid-all' }
+        })
+        .save();
+      
+      // Restore original style
+      invoiceRef.current.style.background = originalStyle;
       
       toast({
         title: "Invoice Downloaded",
@@ -108,7 +104,7 @@ const ExportInvoice = () => {
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast({
-        title: "Error Generating PDF",
+        title: "Error Generating PDF", 
         description: "There was a problem generating your PDF. Please try again.",
         variant: "destructive"
       });

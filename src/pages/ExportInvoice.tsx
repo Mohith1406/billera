@@ -260,11 +260,14 @@ const ExportInvoice = () => {
           </div>
 
           <div>
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="h-full">
+              <CardContent className="pt-6 h-full">
                 <h2 className="text-xl font-semibold mb-4">Invoice Preview</h2>
                 
-                <div ref={invoiceRef} className="border rounded-md p-6 bg-white">
+                <div 
+                  ref={invoiceRef} 
+                  className="border rounded-md p-6 bg-white scale-100 transform origin-top-left overflow-auto max-h-[calc(100vh-12rem)] shadow-md"
+                >
                   <div className="flex justify-between mb-8">
                     <div>
                       {invoiceData.businessInfo.logo ? (

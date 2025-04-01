@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,14 @@ import { Textarea } from "@/components/ui/textarea";
 import Layout from "@/components/Layout";
 import { Download, Printer, Mail, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 const ExportInvoice = () => {
   const { invoiceData, setInvoiceData, setCurrentStep } = useInvoice();
   const { toast } = useToast();
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const invoiceRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     setCurrentStep(5);
@@ -44,17 +47,67 @@ const ExportInvoice = () => {
     }).format(amount);
   };
 
-  const handleGeneratePdf = () => {
+  const handleGeneratePdf = async () => {
+    if (!invoiceRef.current) return;
+    
     setIsPdfGenerating(true);
     
-    // Simulate PDF generation with a timeout
-    setTimeout(() => {
-      setIsPdfGenerating(false);
-      toast({
-        title: "Invoice Generated",
-        description: "Your invoice has been generated successfully."
+    try {
+      // Apply white background style temporarily for PDF generation
+      const originalStyle = invoiceRef.current.style.background;
+      invoiceRef.current.style.background = "white";
+      
+      const canvas = await html2canvas(invoiceRef.current, {
+        scale: 2,  // Higher scale for better quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff"
       });
-    }, 1500);
+      
+      // Restore original style
+      invoiceRef.current.style.background = originalStyle;
+      
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Calculate PDF dimensions based on canvas aspect ratio
+      const imgWidth = 210;  // A4 width in mm (210mm)
+      const pageHeight = 297;  // A4 height in mm (297mm)
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      
+      // Add new pages if the invoice is longer than one page
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      
+      // Generate filename
+      const fileName = `Invoice-${invoiceData.invoiceNumber}-${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      // Save the PDF
+      pdf.save(fileName);
+      
+      toast({
+        title: "Invoice Downloaded",
+        description: "Your invoice has been generated and downloaded successfully."
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error Generating PDF",
+        description: "There was a problem generating your PDF. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsPdfGenerating(false);
+    }
   };
 
   const handleEmailInvoice = () => {
@@ -211,7 +264,7 @@ const ExportInvoice = () => {
               <CardContent className="pt-6">
                 <h2 className="text-xl font-semibold mb-4">Invoice Preview</h2>
                 
-                <div className="border rounded-md p-6 bg-white">
+                <div ref={invoiceRef} className="border rounded-md p-6 bg-white">
                   <div className="flex justify-between mb-8">
                     <div>
                       {invoiceData.businessInfo.logo ? (

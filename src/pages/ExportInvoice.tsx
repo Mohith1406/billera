@@ -126,7 +126,7 @@ const ExportInvoice = () => {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-3">Generate & Export Invoice</h1>
           <p className="text-muted-foreground">
@@ -134,7 +134,7 @@ const ExportInvoice = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
             <Card className="mb-6">
               <CardContent className="pt-6">
@@ -266,7 +266,7 @@ const ExportInvoice = () => {
                 
                 <div 
                   ref={invoiceRef} 
-                  className="border rounded-md p-6 bg-white scale-100 transform origin-top-left overflow-auto max-h-[calc(100vh-12rem)] shadow-md"
+                  className="border rounded-md p-8 bg-white scale-100 transform origin-top-left overflow-auto max-h-[calc(100vh-12rem)] shadow-md w-full md:min-w-[500px] lg:min-w-[600px]"
                 >
                   <div className="flex justify-between mb-8">
                     <div>

@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { InvoiceProvider } from "@/contexts/InvoiceContext";
 import InvoiceGenerator from "./pages/InvoiceGenerator";
@@ -33,6 +33,8 @@ const App = () => (
               <Route path="/column-selection" element={<ColumnSelection />} />
               <Route path="/export" element={<ExportInvoice />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              {/* Add redirect for the incorrect route */}
+              <Route path="/export-invoice" element={<Navigate to="/export" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

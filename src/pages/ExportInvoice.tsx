@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
@@ -23,16 +24,24 @@ const ExportInvoice = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    setCurrentStep(4);
-  }, [setCurrentStep]);
+    setCurrentStep(5); // Update to correct step number (Export is step 5)
+    console.log("ExportInvoice mounted, current invoice data:", invoiceData);
+    if (invoiceBatch) {
+      console.log("Invoice batch detected:", invoiceBatch);
+    }
+  }, [setCurrentStep, invoiceData, invoiceBatch]);
 
   const generatePDF = async () => {
-    if (!invoiceRef.current) return;
+    if (!invoiceRef.current) {
+      console.error("Invoice reference is null, cannot generate PDF");
+      return;
+    }
     
     setIsGenerating(true);
     
     try {
       const element = invoiceRef.current.cloneNode(true) as HTMLElement;
+      console.log("Generating PDF from element:", element);
       
       const pdfOptions = {
         margin: 10,

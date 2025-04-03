@@ -367,7 +367,7 @@ const LineItems = () => {
         });
         
         // Navigate to export page
-        navigate("/export-invoice");
+        navigate("/export");
       } else {
         // Single client - process as before
         const clientRows = csvData.filter(row => 
@@ -406,7 +406,7 @@ const LineItems = () => {
           
           csvHeaders.forEach((header, index) => {
             const field = headerMapping[header];
-            if (field && !field.startsWith('client') && row[index]) {
+            if (field && row[index]) {
               if (field === 'description' || field === 'category') {
                 item[field] = row[index];
               } else {

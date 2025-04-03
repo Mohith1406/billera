@@ -1,14 +1,15 @@
-
 import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import html2pdf from "html2pdf.js";
-import { ArrowLeft, ArrowRight, Download, Mail, Printer } from "lucide-react";
+import { ArrowLeft, ArrowRight, Download, FileArchive, Mail, Printer } from "lucide-react";
 import { InvoiceTemplates } from "@/templates/InvoiceTemplates";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 const ExportInvoice = () => {
   const { 
@@ -22,6 +23,7 @@ const ExportInvoice = () => {
   const invoiceRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState("preview");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
 
   useEffect(() => {
     setCurrentStep(5); // Update to correct step number (Export is step 5)
@@ -31,13 +33,11 @@ const ExportInvoice = () => {
     }
   }, [setCurrentStep, invoiceData, invoiceBatch]);
 
-  const generatePDF = async () => {
+  const generatePDF = async (forDownload = true) => {
     if (!invoiceRef.current) {
       console.error("Invoice reference is null, cannot generate PDF");
-      return;
+      return null;
     }
-    
-    setIsGenerating(true);
     
     try {
       const element = invoiceRef.current.cloneNode(true) as HTMLElement;
@@ -55,12 +55,21 @@ const ExportInvoice = () => {
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
       
+      if (!forDownload) {
+        return html2pdf()
+          .set(pdfOptions)
+          .from(element)
+          .outputPdf('blob');
+      }
+      
       const pdf = await html2pdf().set(pdfOptions).from(element).save();
       
       toast({
         title: "PDF Generated",
         description: "Your invoice PDF has been created successfully",
       });
+      
+      return pdf;
     } catch (error) {
       console.error("PDF generation error:", error);
       toast({
@@ -68,8 +77,73 @@ const ExportInvoice = () => {
         description: "There was a problem creating your PDF",
         variant: "destructive"
       });
+      return null;
+    }
+  };
+
+  const handleGeneratePDF = async () => {
+    setIsGenerating(true);
+    await generatePDF();
+    setIsGenerating(false);
+  };
+
+  const generateBatchZip = async () => {
+    if (!invoiceBatch || !invoiceBatch.invoices.length) {
+      toast({
+        title: "No Batch Found",
+        description: "No invoice batch was found to process",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsBatchGenerating(true);
+    const zip = new JSZip();
+    const currentIndex = invoiceBatch.currentIndex;
+    const toastId = toast({
+      title: "Generating Batch",
+      description: "Creating PDFs for all invoices...",
+    });
+    
+    try {
+      for (let i = 0; i < invoiceBatch.invoices.length; i++) {
+        if (i !== currentIndex) {
+          selectNextInvoice();
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        const pdfBlob = await generatePDF(false);
+        if (pdfBlob) {
+          const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
+          zip.file(filename, pdfBlob);
+        }
+      }
+      
+      while (invoiceBatch.currentIndex !== currentIndex) {
+        if (invoiceBatch.currentIndex > currentIndex) {
+          selectPreviousInvoice();
+        } else {
+          selectNextInvoice();
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, "Invoices.zip");
+      
+      toast({
+        title: "Batch Download Complete",
+        description: `Successfully created a ZIP file with ${invoiceBatch.invoices.length} invoices`,
+      });
+    } catch (error) {
+      console.error("Error generating batch ZIP:", error);
+      toast({
+        title: "Batch Processing Error",
+        description: "There was a problem creating the invoice batch ZIP file",
+        variant: "destructive"
+      });
     } finally {
-      setIsGenerating(false);
+      setIsBatchGenerating(false);
     }
   };
 
@@ -208,7 +282,7 @@ const ExportInvoice = () => {
                       Save your invoice as a PDF file to your device.
                     </p>
                     <Button 
-                      onClick={generatePDF} 
+                      onClick={handleGeneratePDF} 
                       className="w-full"
                       disabled={isGenerating}
                     >
@@ -256,14 +330,14 @@ const ExportInvoice = () => {
                   <p className="text-muted-foreground mb-4">
                     Apply actions to all {invoiceBatch.invoices.length} invoices at once.
                   </p>
-                  <div className="flex gap-4">
-                    <Button onClick={() => {
-                      toast({
-                        title: "Batch Download",
-                        description: `Downloading all ${invoiceBatch.invoices.length} invoices as PDFs`,
-                      });
-                    }}>
-                      Download All
+                  <div className="flex flex-wrap gap-4">
+                    <Button 
+                      onClick={generateBatchZip}
+                      disabled={isBatchGenerating}
+                      className="flex items-center gap-2"
+                    >
+                      <FileArchive className="h-4 w-4" />
+                      {isBatchGenerating ? "Creating ZIP..." : "Download All as ZIP"}
                     </Button>
                     <Button variant="outline" onClick={() => {
                       toast({

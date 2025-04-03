@@ -1,4 +1,3 @@
-
 import React from "react";
 import { InvoiceData } from "@/contexts/InvoiceContext";
 
@@ -37,7 +36,90 @@ export const InvoiceTemplates: React.FC<{
   }
 };
 
+// Helper function to organize items by category and calculate subtotals
+const getCategoryTotals = (lineItems: InvoiceData['lineItems']) => {
+  const categories: Record<string, {
+    items: InvoiceData['lineItems'],
+    subtotal: number,
+    taxTotal: number,
+    discountTotal: number,
+    grandTotal: number
+  }> = {};
+  
+  lineItems.forEach(item => {
+    const category = item.category || 'Uncategorized';
+    
+    if (!categories[category]) {
+      categories[category] = {
+        items: [],
+        subtotal: 0,
+        taxTotal: 0,
+        discountTotal: 0,
+        grandTotal: 0
+      };
+    }
+    
+    categories[category].items.push(item);
+    
+    const itemSubtotal = item.quantity * item.unitPrice;
+    const itemDiscount = itemSubtotal * (item.discount / 100);
+    const itemTax = (itemSubtotal - itemDiscount) * (item.taxRate / 100);
+    
+    categories[category].subtotal += itemSubtotal;
+    categories[category].discountTotal += itemDiscount;
+    categories[category].taxTotal += itemTax;
+    categories[category].grandTotal += (itemSubtotal - itemDiscount + itemTax);
+  });
+  
+  return categories;
+};
+
+// Category totals component to be reused across templates
+const CategoryTotals: React.FC<{
+  invoiceData: InvoiceData;
+  formatCurrency: (amount: number) => string;
+  className?: string;
+}> = ({ invoiceData, formatCurrency, className = '' }) => {
+  const categories = getCategoryTotals(invoiceData.lineItems);
+  
+  return (
+    <div className={`space-y-4 ${className}`}>
+      <h3 className="font-semibold text-sm mb-2">Category Subtotals:</h3>
+      {Object.entries(categories).map(([category, data]) => (
+        <div key={category} className="border-b border-gray-200 pb-3 mb-3 last:border-0">
+          <div className="font-medium mb-2">{category}</div>
+          <div className="flex justify-between text-sm">
+            <span>Subtotal:</span>
+            <span>{formatCurrency(data.subtotal)}</span>
+          </div>
+          {data.discountTotal > 0 && (
+            <div className="flex justify-between text-sm">
+              <span>Discount:</span>
+              <span>-{formatCurrency(data.discountTotal)}</span>
+            </div>
+          )}
+          {data.taxTotal > 0 && (
+            <div className="flex justify-between text-sm">
+              <span>Tax:</span>
+              <span>{formatCurrency(data.taxTotal)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm font-semibold mt-1">
+            <span>Total:</span>
+            <span>{formatCurrency(data.grandTotal)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const ProfessionalTemplate: React.FC<TemplateProps> = ({ invoiceData, formatCurrency, innerRef }) => {
+  // Create category items map for separated categories
+  const categoryMap = invoiceData.separateCategories 
+    ? getCategoryTotals(invoiceData.lineItems) 
+    : null;
+
   return (
     <div 
       ref={innerRef} 
@@ -95,45 +177,96 @@ export const ProfessionalTemplate: React.FC<TemplateProps> = ({ invoiceData, for
         </div>
       </div>
 
-      <table className="w-full text-sm mb-8">
-        <thead>
-          <tr className="bg-muted/30 border-t border-b">
-            {invoiceData.columnVisibility.description && <th className="text-left py-2 px-2">Description</th>}
-            {invoiceData.columnVisibility.quantity && <th className="text-right py-2 px-2">Qty</th>}
-            {invoiceData.columnVisibility.unitPrice && <th className="text-right py-2 px-2">Price</th>}
-            {invoiceData.columnVisibility.taxRate && <th className="text-right py-2 px-2">Tax %</th>}
-            {invoiceData.columnVisibility.discount && <th className="text-right py-2 px-2">Disc %</th>}
-            {invoiceData.columnVisibility.category && <th className="text-left py-2 px-2">Category</th>}
-            {invoiceData.columnVisibility.total && <th className="text-right py-2 px-2">Total</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {invoiceData.lineItems.length > 0 ? (
-            invoiceData.lineItems.map((item) => (
-              <tr key={item.id} className="border-b">
-                {invoiceData.columnVisibility.description && <td className="py-2 px-2">{item.description}</td>}
-                {invoiceData.columnVisibility.quantity && <td className="py-2 px-2 text-right">{item.quantity}</td>}
-                {invoiceData.columnVisibility.unitPrice && <td className="py-2 px-2 text-right">{formatCurrency(item.unitPrice)}</td>}
-                {invoiceData.columnVisibility.taxRate && <td className="py-2 px-2 text-right">{item.taxRate}%</td>}
-                {invoiceData.columnVisibility.discount && <td className="py-2 px-2 text-right">{item.discount}%</td>}
-                {invoiceData.columnVisibility.category && <td className="py-2 px-2">{item.category || "-"}</td>}
-                {invoiceData.columnVisibility.total && <td className="py-2 px-2 text-right">{formatCurrency(item.total)}</td>}
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <td 
-                colSpan={Object.values(invoiceData.columnVisibility).filter(Boolean).length} 
-                className="py-4 text-center text-muted-foreground"
-              >
-                No items to display
-              </td>
+      {invoiceData.separateCategories && categoryMap ? (
+        // Display items organized by category
+        Object.entries(categoryMap).map(([category, data]) => (
+          <div key={category} className="mb-6">
+            <h3 className="font-semibold mb-2 border-b pb-1">{category}</h3>
+            <table className="w-full text-sm mb-2">
+              <thead>
+                <tr className="bg-muted/30 border-t border-b">
+                  {invoiceData.columnVisibility.description && <th className="text-left py-2 px-2">Description</th>}
+                  {invoiceData.columnVisibility.quantity && <th className="text-right py-2 px-2">Qty</th>}
+                  {invoiceData.columnVisibility.unitPrice && <th className="text-right py-2 px-2">Price</th>}
+                  {invoiceData.columnVisibility.taxRate && <th className="text-right py-2 px-2">Tax %</th>}
+                  {invoiceData.columnVisibility.discount && <th className="text-right py-2 px-2">Disc %</th>}
+                  {invoiceData.columnVisibility.total && <th className="text-right py-2 px-2">Total</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((item) => (
+                  <tr key={item.id} className="border-b">
+                    {invoiceData.columnVisibility.description && <td className="py-2 px-2">{item.description}</td>}
+                    {invoiceData.columnVisibility.quantity && <td className="py-2 px-2 text-right">{item.quantity}</td>}
+                    {invoiceData.columnVisibility.unitPrice && <td className="py-2 px-2 text-right">{formatCurrency(item.unitPrice)}</td>}
+                    {invoiceData.columnVisibility.taxRate && <td className="py-2 px-2 text-right">{item.taxRate}%</td>}
+                    {invoiceData.columnVisibility.discount && <td className="py-2 px-2 text-right">{item.discount}%</td>}
+                    {invoiceData.columnVisibility.total && <td className="py-2 px-2 text-right">{formatCurrency(item.total)}</td>}
+                  </tr>
+                ))}
+                <tr className="bg-gray-50">
+                  <td className="py-2 px-2 text-right font-semibold" colSpan={Object.values(invoiceData.columnVisibility).filter(Boolean).length - 1}>
+                    Category Total:
+                  </td>
+                  <td className="py-2 px-2 text-right font-semibold">
+                    {formatCurrency(data.grandTotal)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))
+      ) : (
+        // Standard table without category separation
+        <table className="w-full text-sm mb-8">
+          <thead>
+            <tr className="bg-muted/30 border-t border-b">
+              {invoiceData.columnVisibility.description && <th className="text-left py-2 px-2">Description</th>}
+              {invoiceData.columnVisibility.quantity && <th className="text-right py-2 px-2">Qty</th>}
+              {invoiceData.columnVisibility.unitPrice && <th className="text-right py-2 px-2">Price</th>}
+              {invoiceData.columnVisibility.taxRate && <th className="text-right py-2 px-2">Tax %</th>}
+              {invoiceData.columnVisibility.discount && <th className="text-right py-2 px-2">Disc %</th>}
+              {invoiceData.columnVisibility.category && <th className="text-left py-2 px-2">Category</th>}
+              {invoiceData.columnVisibility.total && <th className="text-right py-2 px-2">Total</th>}
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {invoiceData.lineItems.length > 0 ? (
+              invoiceData.lineItems.map((item) => (
+                <tr key={item.id} className="border-b">
+                  {invoiceData.columnVisibility.description && <td className="py-2 px-2">{item.description}</td>}
+                  {invoiceData.columnVisibility.quantity && <td className="py-2 px-2 text-right">{item.quantity}</td>}
+                  {invoiceData.columnVisibility.unitPrice && <td className="py-2 px-2 text-right">{formatCurrency(item.unitPrice)}</td>}
+                  {invoiceData.columnVisibility.taxRate && <td className="py-2 px-2 text-right">{item.taxRate}%</td>}
+                  {invoiceData.columnVisibility.discount && <td className="py-2 px-2 text-right">{item.discount}%</td>}
+                  {invoiceData.columnVisibility.category && <td className="py-2 px-2">{item.category || "-"}</td>}
+                  {invoiceData.columnVisibility.total && <td className="py-2 px-2 text-right">{formatCurrency(item.total)}</td>}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td 
+                  colSpan={Object.values(invoiceData.columnVisibility).filter(Boolean).length} 
+                  className="py-4 text-center text-muted-foreground"
+                >
+                  No items to display
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
 
-      <div className="flex justify-end mb-8">
+      <div className="flex justify-between mb-8">
+        <div className="w-1/2">
+          {invoiceData.separateCategories && (
+            <CategoryTotals 
+              invoiceData={invoiceData} 
+              formatCurrency={formatCurrency} 
+              className="bg-gray-50 p-4 rounded-md"
+            />
+          )}
+        </div>
         <div className="w-64">
           <div className="flex justify-between py-2">
             <span>Subtotal:</span>

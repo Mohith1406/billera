@@ -32,7 +32,9 @@ const ExportInvoice = () => {
     
     // Generate a random invoice number if not already set
     if (!invoiceData.invoiceNumber) {
-      const randomInvoiceNumber = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
+      const timestamp = Math.floor(Date.now() / 1000).toString().slice(-6); // Last 6 digits of Unix timestamp
+      const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
+      const randomInvoiceNumber= `INV-${timestamp}${randomNum}`;
       setInvoiceData(prev => ({
         ...prev,
         invoiceNumber: randomInvoiceNumber

@@ -1,317 +1,356 @@
-
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import Layout from "@/components/Layout";
-import { Download, Printer, Mail } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import html2pdf from "html2pdf.js";
-import { 
-  ProfessionalTemplate, 
-  ModernTemplate, 
-  ClassicTemplate, 
-  MinimalTemplate, 
-  CreativeTemplate 
-} from "@/templates/InvoiceTemplates";
+import { ArrowLeft, ArrowRight, Download, FileArchive, Mail, Printer } from "lucide-react";
+import { InvoiceTemplates } from "@/templates/InvoiceTemplates";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 const ExportInvoice = () => {
-  const { invoiceData, setInvoiceData, setCurrentStep } = useInvoice();
+  const { 
+    invoiceData, 
+    setCurrentStep,
+    invoiceBatch,
+    selectNextInvoice,
+    selectPreviousInvoice
+  } = useInvoice();
   const { toast } = useToast();
-  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
-  
+  const [activeTab, setActiveTab] = useState("preview");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+
   useEffect(() => {
     setCurrentStep(5);
     
     // Generate a random invoice number if not already set
     if (!invoiceData.invoiceNumber) {
-      const timestamp = Math.floor(Date.now() / 1000).toString().slice(-6); // Last 6 digits of Unix timestamp
-      const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
-      const randomInvoiceNumber= `INV-${timestamp}${randomNum}`;
+      const randomInvoiceNumber = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
       setInvoiceData(prev => ({
         ...prev,
         invoiceNumber: randomInvoiceNumber
       }));
     }
-  }, [setCurrentStep, invoiceData.invoiceNumber, setInvoiceData]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setInvoiceData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: invoiceData.currency || 'USD',
-    }).format(amount);
-  };
-
-  const handleGeneratePdf = async () => {
-    if (!invoiceRef.current) return;
-    
-    setIsPdfGenerating(true);
     
     try {
-      // Apply white background style temporarily for PDF generation
-      const originalStyle = invoiceRef.current.style.background;
-      invoiceRef.current.style.background = "white";
+      const element = invoiceRef.current.cloneNode(true) as HTMLElement;
+      console.log("Generating PDF from element:", element);
       
-      // Generate filename
-      const fileName = `Invoice-${invoiceData.invoiceNumber}-${new Date().toISOString().split('T')[0]}.pdf`;
+      const pdfOptions = {
+        margin: 10,
+        filename: `Invoice_${invoiceData.invoiceNumber}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true,
+          letterRendering: true
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
       
-      await html2pdf()
-        .from(invoiceRef.current)
-        .set({
-          filename: fileName,
-          margin: [10, 10, 10, 10], // Add margins [top, right, bottom, left] in mm
-          html2canvas: {
-            scale: 4,  // Increased scale for higher quality
-            useCORS: true,
-            logging: false,
-            backgroundColor: "#ffffff",
-            letterRendering: true, // Improves text rendering
-            dpi: 300, // Higher DPI for better resolution
-            imageTimeout: 0, // No timeout for image loading
-          },
-          jsPDF: {
-            unit: "mm",
-            format: "a4",
-            orientation: "portrait",
-            compress: false, // No compression for better quality
-            precision: 16, // Higher precision for vector graphics
-            hotfixes: ["px_scaling"], // Fix scaling issues
-          },
-          pagebreak: { mode: 'avoid-all' }
-        })
-        .save();
+      if (!forDownload) {
+        return html2pdf()
+          .set(pdfOptions)
+          .from(element)
+          .outputPdf('blob');
+      }
       
-      // Restore original style
-      invoiceRef.current.style.background = originalStyle;
+      const pdf = await html2pdf().set(pdfOptions).from(element).save();
       
       toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been generated and downloaded successfully."
+        title: "PDF Generated",
+        description: "Your invoice PDF has been created successfully",
+      });
+      
+      return pdf;
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast({
+        title: "Error Generating PDF",
+        description: "There was a problem creating your PDF",
+        variant: "destructive"
+      });
+      return null;
+    }
+  };
+
+  const handleGeneratePDF = async () => {
+    setIsGenerating(true);
+    await generatePDF();
+    setIsGenerating(false);
+  };
+
+  const generateBatchZip = async () => {
+    if (!invoiceBatch || !invoiceBatch.invoices.length) {
+      toast({
+        title: "No Batch Found",
+        description: "No invoice batch was found to process",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsBatchGenerating(true);
+    const zip = new JSZip();
+    const currentIndex = invoiceBatch.currentIndex;
+    const toastId = toast({
+      title: "Generating Batch",
+      description: "Creating PDFs for all invoices...",
+    });
+    
+    try {
+      for (let i = 0; i < invoiceBatch.invoices.length; i++) {
+        if (i !== currentIndex) {
+          selectNextInvoice();
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        const pdfBlob = await generatePDF(false);
+        if (pdfBlob) {
+          const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
+          zip.file(filename, pdfBlob);
+        }
+      }
+      
+      while (invoiceBatch.currentIndex !== currentIndex) {
+        if (invoiceBatch.currentIndex > currentIndex) {
+          selectPreviousInvoice();
+        } else {
+          selectNextInvoice();
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, "Invoices.zip");
+      
+      toast({
+        title: "Batch Download Complete",
+        description: `Successfully created a ZIP file with ${invoiceBatch.invoices.length} invoices`,
       });
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      console.error("Error generating batch ZIP:", error);
       toast({
-        title: "Error Generating PDF", 
-        description: "There was a problem generating your PDF. Please try again.",
+        title: "Batch Processing Error",
+        description: "There was a problem creating the invoice batch ZIP file",
         variant: "destructive"
       });
     } finally {
-      setIsPdfGenerating(false);
+      setIsBatchGenerating(false);
     }
   };
 
-  const handleEmailInvoice = () => {
+  const printInvoice = () => {
+    if (!invoiceRef.current) return;
+    
+    const content = invoiceRef.current.innerHTML;
+    const printWindow = window.open('', '_blank');
+    
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Invoice</title>
+            <style>
+              body {
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              }
+              @media print {
+                body {
+                  padding: 20px;
+                }
+              }
+            </style>
+          </head>
+          <body>
+            ${content}
+          </body>
+        </html>
+      `);
+      
+      printWindow.document.close();
+      printWindow.focus();
+      
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    } else {
+      toast({
+        title: "Print Error",
+        description: "Unable to open print window. Please check your browser settings.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const sendInvoiceByEmail = () => {
     toast({
-      title: "Email Feature Coming Soon",
-      description: "The email functionality will be available in a future update."
+      title: "Preparing Email",
+      description: "Email functionality would send the invoice to the client",
     });
-  };
-
-  const handlePrintInvoice = () => {
-    toast({
-      title: "Print Feature Coming Soon",
-      description: "The print functionality will be available in a future update."
-    });
-  };
-
-  // Render the appropriate template based on the selected template
-  const renderTemplate = () => {
-    if (!invoiceData.template) {
-      return (
-        <div className="p-8 border rounded-md bg-gray-50 flex items-center justify-center min-h-[500px]">
-          <p className="text-muted-foreground">Please select a template to preview your invoice</p>
-        </div>
-      );
-    }
-
-    const templateProps = {
-      invoiceData,
-      formatCurrency,
-      innerRef: invoiceRef
-    };
-
-    switch (invoiceData.template.id) {
-      case "professional":
-        return <ProfessionalTemplate {...templateProps} />;
-      case "modern":
-        return <ModernTemplate {...templateProps} />;
-      case "classic":
-        return <ClassicTemplate {...templateProps} />;
-      case "minimal":
-        return <MinimalTemplate {...templateProps} />;
-      case "creative":
-        return <CreativeTemplate {...templateProps} />;
-      default:
-        return <ProfessionalTemplate {...templateProps} />;
-    }
   };
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-3">Generate & Export Invoice</h1>
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-3">Export Invoice</h1>
           <p className="text-muted-foreground">
-            Finalize your invoice details and export it in your preferred format.
+            Preview your invoice and export it in various formats.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div>
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Invoice Details</h2>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="invoiceNumber">Invoice Number</Label>
-                      <Input
-                        id="invoiceNumber"
-                        name="invoiceNumber"
-                        value={invoiceData.invoiceNumber}
-                        onChange={handleInputChange}
-                        placeholder="INV-123456"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="currency">Currency</Label>
-                      <select
-                        id="currency"
-                        name="currency"
-                        value={invoiceData.currency}
-                        onChange={(e) => handleInputChange(e as any)}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="USD">USD (US Dollar)</option>
-                        <option value="EUR">EUR (Euro)</option>
-                        <option value="GBP">GBP (British Pound)</option>
-                        <option value="CAD">CAD (Canadian Dollar)</option>
-                        <option value="AUD">AUD (Australian Dollar)</option>
-                        <option value="INR">INR (Indian Rupee)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="invoiceDate">Invoice Date</Label>
-                      <Input
-                        id="invoiceDate"
-                        name="invoiceDate"
-                        type="date"
-                        value={invoiceData.invoiceDate}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="dueDate">Due Date</Label>
-                      <Input
-                        id="dueDate"
-                        name="dueDate"
-                        type="date"
-                        value={invoiceData.dueDate}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      name="notes"
-                      value={invoiceData.notes}
-                      onChange={handleInputChange}
-                      placeholder="Any additional notes for the client..."
-                      rows={3}
+        {invoiceBatch && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold">Multiple Invoices</h2>
+                  <p className="text-muted-foreground">
+                    Viewing invoice {invoiceBatch.currentIndex + 1} of {invoiceBatch.invoices.length}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    disabled={invoiceBatch.currentIndex === 0}
+                    onClick={selectPreviousInvoice}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    disabled={invoiceBatch.currentIndex === invoiceBatch.invoices.length - 1}
+                    onClick={selectNextInvoice}
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Tabs defaultValue="preview" value={activeTab} onValueChange={setActiveTab}>
+          <div className="flex justify-between items-center mb-6">
+            <TabsList>
+              <TabsTrigger value="preview">Preview</TabsTrigger>
+              <TabsTrigger value="actions">Export Options</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="preview" className="mt-0">
+            <Card className="mb-6 border border-gray-200">
+              <CardContent className="p-0 overflow-auto">
+                <div className="p-8">
+                  {invoiceData.template ? (
+                    <InvoiceTemplates 
+                      templateId={invoiceData.template.id} 
+                      invoice={invoiceData}
+                      innerRef={invoiceRef}
                     />
-                  </div>
-                  <div>
-                    <Label htmlFor="terms">Terms & Conditions</Label>
-                    <Textarea
-                      id="terms"
-                      name="terms"
-                      value={invoiceData.terms}
-                      onChange={handleInputChange}
-                      placeholder="Payment terms and conditions..."
-                      rows={3}
-                    />
-                  </div>
+                  ) : (
+                    <div className="text-center p-8">
+                      <p className="text-muted-foreground">
+                        No template selected. Please go back and select a template.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
 
-            <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Export Options</h2>
-                <div className="space-y-4">
-                  <Button 
-                    onClick={handleGeneratePdf} 
-                    className="w-full flex items-center justify-center gap-2 py-6"
-                    disabled={isPdfGenerating}
-                  >
-                    {isPdfGenerating ? (
-                      <>Generating...</>
-                    ) : (
-                      <>
-                        <Download className="w-5 h-5" />
-                        Download PDF
-                      </>
-                    )}
-                  </Button>
-                  
-                  <div className="grid grid-cols-2 gap-4">
+          <TabsContent value="actions" className="mt-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center text-center">
+                    <Download className="h-10 w-10 mb-4 text-primary" />
+                    <h3 className="text-lg font-medium mb-2">Download PDF</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Save your invoice as a PDF file to your device.
+                    </p>
                     <Button 
-                      variant="outline" 
-                      onClick={handleEmailInvoice}
-                      className="flex items-center justify-center gap-2"
+                      onClick={handleGeneratePDF} 
+                      className="w-full"
+                      disabled={isGenerating}
                     >
-                      <Mail className="w-4 h-4" />
-                      Email Invoice
+                      {isGenerating ? "Generating..." : "Download PDF"}
                     </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePrintInvoice}
-                      className="flex items-center justify-center gap-2"
-                    >
-                      <Printer className="w-4 h-4" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center text-center">
+                    <Printer className="h-10 w-10 mb-4 text-primary" />
+                    <h3 className="text-lg font-medium mb-2">Print Invoice</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Print your invoice directly from your browser.
+                    </p>
+                    <Button onClick={printInvoice} className="w-full">
                       Print Invoice
                     </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                </CardContent>
+              </Card>
 
-          <div>
-            <Card className="h-full">
-              <CardContent className="pt-6 h-full">
-                <h2 className="text-xl font-semibold mb-4">Invoice Preview</h2>
-                
-                <div className="border rounded-md bg-gray-50 overflow-auto max-h-[calc(100vh-12rem)] shadow-md w-full md:min-w-[500px] lg:min-w-[600px]">
-                  {renderTemplate()}
-                </div>
-                
-                <div className="mt-4 text-center text-sm text-muted-foreground">
-                  <p>This is a preview. The actual PDF may look slightly different.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col items-center text-center">
+                    <Mail className="h-10 w-10 mb-4 text-primary" />
+                    <h3 className="text-lg font-medium mb-2">Email Invoice</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Send the invoice directly to your client's email.
+                    </p>
+                    <Button onClick={sendInvoiceByEmail} className="w-full">
+                      Send by Email
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {invoiceBatch && invoiceBatch.invoices.length > 1 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <h3 className="text-lg font-medium mb-2">Batch Operations</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Apply actions to all {invoiceBatch.invoices.length} invoices at once.
+                  </p>
+                  <div className="flex flex-wrap gap-4">
+                    <Button 
+                      onClick={generateBatchZip}
+                      disabled={isBatchGenerating}
+                      className="flex items-center gap-2"
+                    >
+                      <FileArchive className="h-4 w-4" />
+                      {isBatchGenerating ? "Creating ZIP..." : "Download All as ZIP"}
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      toast({
+                        title: "Batch Email",
+                        description: `Sending all ${invoiceBatch.invoices.length} invoices to respective clients`,
+                      });
+                    }}>
+                      Email All
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

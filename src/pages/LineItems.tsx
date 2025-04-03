@@ -61,8 +61,8 @@ const LineItems = () => {
 
   useEffect(() => {
     setCurrentStep(3);
-    calculateTotals();
-  }, [setCurrentStep, calculateTotals]);
+    // Fix: Only calculate totals once on component mount
+  }, [setCurrentStep]);
 
   const handleNewItemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -119,50 +119,110 @@ const LineItems = () => {
             setCsvHeaders(headers);
             setCsvData(rows.slice(1));
             
-            // Initialize default mappings
+            // Initialize default mappings with improved detection logic
             const initialMapping: Record<string, string> = {};
             
-            // Check if there are client-related headers
-            const hasClientHeaders = headers.some(h => 
-              h.toLowerCase().includes('client') || 
-              h.toLowerCase().includes('customer')
-            );
-            
-            setHasClientData(hasClientHeaders);
+            // Improved client field detection
+            let clientFieldsDetected = false;
             
             headers.forEach(header => {
               const lowerHeader = header.toLowerCase();
               
-              // Client mappings
-              if (lowerHeader.includes('client') && lowerHeader.includes('name')) 
-                initialMapping[header] = 'clientName';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('email')) 
-                initialMapping[header] = 'clientEmail';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('phone')) 
-                initialMapping[header] = 'clientPhone';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('address')) 
-                initialMapping[header] = 'clientAddress';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('city')) 
-                initialMapping[header] = 'clientCity';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('state')) 
-                initialMapping[header] = 'clientState';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('zip')) 
-                initialMapping[header] = 'clientZip';
-              else if (lowerHeader.includes('client') && lowerHeader.includes('country')) 
-                initialMapping[header] = 'clientCountry';
+              // Client mappings with more robust detection
+              if (lowerHeader.includes('client') || lowerHeader.includes('customer')) {
+                if (lowerHeader.includes('name')) {
+                  initialMapping[header] = 'clientName';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('email')) {
+                  initialMapping[header] = 'clientEmail';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('phone')) {
+                  initialMapping[header] = 'clientPhone';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('address')) {
+                  initialMapping[header] = 'clientAddress';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('city')) {
+                  initialMapping[header] = 'clientCity';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('state') || lowerHeader.includes('province')) {
+                  initialMapping[header] = 'clientState';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('zip') || lowerHeader.includes('postal')) {
+                  initialMapping[header] = 'clientZip';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader.includes('country')) {
+                  initialMapping[header] = 'clientCountry';
+                  clientFieldsDetected = true;
+                }
+              }
+              
+              // Try detecting client fields without the "client" prefix
+              else if (!lowerHeader.includes('product') && !lowerHeader.includes('item') && 
+                      !lowerHeader.includes('service') && !lowerHeader.includes('quantity') && 
+                      !lowerHeader.includes('price') && !lowerHeader.includes('tax') && 
+                      !lowerHeader.includes('discount') && !lowerHeader.includes('description')) {
+                if (lowerHeader === 'name' || lowerHeader === 'customer' || lowerHeader === 'company') {
+                  initialMapping[header] = 'clientName';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'email') {
+                  initialMapping[header] = 'clientEmail';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'phone') {
+                  initialMapping[header] = 'clientPhone';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'address' || lowerHeader === 'street') {
+                  initialMapping[header] = 'clientAddress';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'city') {
+                  initialMapping[header] = 'clientCity';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'state' || lowerHeader === 'province') {
+                  initialMapping[header] = 'clientState';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'zip' || lowerHeader === 'postal' || lowerHeader === 'zipcode' || lowerHeader === 'postcode') {
+                  initialMapping[header] = 'clientZip';
+                  clientFieldsDetected = true;
+                }
+                else if (lowerHeader === 'country') {
+                  initialMapping[header] = 'clientCountry';
+                  clientFieldsDetected = true;
+                }
+              }
               
               // Line item mappings
-              else if (lowerHeader.includes('desc')) initialMapping[header] = 'description';
+              if (lowerHeader.includes('desc')) initialMapping[header] = 'description';
               else if (lowerHeader.includes('quant')) initialMapping[header] = 'quantity';
-              else if (lowerHeader.includes('price') || lowerHeader.includes('rate')) 
+              else if (lowerHeader.includes('price') || lowerHeader.includes('rate') || lowerHeader === 'amount') 
                 initialMapping[header] = 'unitPrice';
               else if (lowerHeader.includes('tax')) initialMapping[header] = 'taxRate';
               else if (lowerHeader.includes('disc')) initialMapping[header] = 'discount';
               else if (lowerHeader.includes('cat')) initialMapping[header] = 'category';
+              else if (lowerHeader === 'item' || lowerHeader === 'product' || lowerHeader === 'service')
+                initialMapping[header] = 'description';
             });
             
+            setHasClientData(clientFieldsDetected);
             setHeaderMapping(initialMapping);
             setIsImportingCsv(true);
+            
+            // Log detected mappings for debugging
+            console.log("CSV Headers:", headers);
+            console.log("Detected mappings:", initialMapping);
+            console.log("Client data detected:", clientFieldsDetected);
           } else {
             toast({
               title: "Invalid CSV",
@@ -176,6 +236,7 @@ const LineItems = () => {
             description: "Could not parse the CSV file",
             variant: "destructive"
           });
+          console.error("CSV parsing error:", error);
         }
       };
       reader.readAsText(file);
@@ -222,6 +283,8 @@ const LineItems = () => {
         csvData.map(row => row[clientIdentifierIndex])
       )).filter(id => id && id.trim() !== '');
       
+      console.log("Unique client IDs:", uniqueClientIds);
+      
       // Currently we're only supporting the first client
       // In a full implementation, you would use this to create multiple invoices
       const firstClientRows = csvData.filter(row => 
@@ -239,6 +302,8 @@ const LineItems = () => {
           clientInfo[clientField as keyof ClientInfo] = firstClientRows[0][index];
         }
       });
+      
+      console.log("Extracted client info:", clientInfo);
       
       // Update client info
       if (Object.keys(clientInfo).length > 0) {
@@ -310,6 +375,8 @@ const LineItems = () => {
       });
     }
     
+    // Calculate totals after import
+    calculateTotals();
     setIsImportingCsv(false);
   };
 
@@ -323,6 +390,11 @@ const LineItems = () => {
   const handleCategorySeparationToggle = () => {
     toggleCategorySeparation();
   };
+
+  // Call calculateTotals manually when line items change
+  useEffect(() => {
+    calculateTotals();
+  }, [invoiceData.lineItems, calculateTotals]);
 
   return (
     <Layout>

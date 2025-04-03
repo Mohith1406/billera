@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { useInvoice } from "@/contexts/InvoiceContext";
+import { useInvoice, ClientInfo } from "@/contexts/InvoiceContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,27 @@ import Layout from "@/components/Layout";
 import { Plus, Trash2, FileUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+
+interface CsvRow {
+  // Client fields
+  clientName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  clientCity?: string;
+  clientState?: string;
+  clientZip?: string;
+  clientCountry?: string;
+  
+  // Line item fields
+  description?: string;
+  quantity?: number;
+  unitPrice?: number;
+  taxRate?: number;
+  discount?: number;
+  category?: string;
+}
 
 const LineItems = () => {
   const { 
@@ -17,7 +38,9 @@ const LineItems = () => {
     updateLineItem, 
     removeLineItem, 
     calculateTotals, 
-    setCurrentStep 
+    setCurrentStep,
+    updateClientInfo,
+    toggleCategorySeparation
   } = useInvoice();
   const { toast } = useToast();
   
@@ -34,6 +57,7 @@ const LineItems = () => {
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [headerMapping, setHeaderMapping] = useState<Record<string, string>>({});
+  const [hasClientData, setHasClientData] = useState(false);
 
   useEffect(() => {
     setCurrentStep(3);
@@ -97,11 +121,41 @@ const LineItems = () => {
             
             // Initialize default mappings
             const initialMapping: Record<string, string> = {};
+            
+            // Check if there are client-related headers
+            const hasClientHeaders = headers.some(h => 
+              h.toLowerCase().includes('client') || 
+              h.toLowerCase().includes('customer')
+            );
+            
+            setHasClientData(hasClientHeaders);
+            
             headers.forEach(header => {
               const lowerHeader = header.toLowerCase();
-              if (lowerHeader.includes('desc')) initialMapping[header] = 'description';
+              
+              // Client mappings
+              if (lowerHeader.includes('client') && lowerHeader.includes('name')) 
+                initialMapping[header] = 'clientName';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('email')) 
+                initialMapping[header] = 'clientEmail';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('phone')) 
+                initialMapping[header] = 'clientPhone';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('address')) 
+                initialMapping[header] = 'clientAddress';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('city')) 
+                initialMapping[header] = 'clientCity';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('state')) 
+                initialMapping[header] = 'clientState';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('zip')) 
+                initialMapping[header] = 'clientZip';
+              else if (lowerHeader.includes('client') && lowerHeader.includes('country')) 
+                initialMapping[header] = 'clientCountry';
+              
+              // Line item mappings
+              else if (lowerHeader.includes('desc')) initialMapping[header] = 'description';
               else if (lowerHeader.includes('quant')) initialMapping[header] = 'quantity';
-              else if (lowerHeader.includes('price') || lowerHeader.includes('rate')) initialMapping[header] = 'unitPrice';
+              else if (lowerHeader.includes('price') || lowerHeader.includes('rate')) 
+                initialMapping[header] = 'unitPrice';
               else if (lowerHeader.includes('tax')) initialMapping[header] = 'taxRate';
               else if (lowerHeader.includes('disc')) initialMapping[header] = 'discount';
               else if (lowerHeader.includes('cat')) initialMapping[header] = 'category';
@@ -136,38 +190,127 @@ const LineItems = () => {
   };
 
   const importCsvItems = () => {
-    // Import items based on the mapping
-    csvData.forEach(row => {
-      const item: any = {
-        description: "",
-        quantity: 1,
-        unitPrice: 0,
-        taxRate: 0,
-        discount: 0,
-        category: "",
-      };
+    if (csvData.length === 0) {
+      toast({
+        title: "No data to import",
+        description: "The CSV file contains no data rows",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Group rows by client if client data is present
+    if (hasClientData) {
+      // Get unique clients based on client name or email
+      const clientIdentifierHeader = csvHeaders.find(header => 
+        headerMapping[header] === 'clientName' || headerMapping[header] === 'clientEmail'
+      );
       
+      if (!clientIdentifierHeader) {
+        toast({
+          title: "Client Identifier Missing",
+          description: "Please map a column to Client Name or Client Email to identify unique clients",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      const clientIdentifierIndex = csvHeaders.indexOf(clientIdentifierHeader);
+      
+      // Get unique client identifiers
+      const uniqueClientIds = Array.from(new Set(
+        csvData.map(row => row[clientIdentifierIndex])
+      )).filter(id => id && id.trim() !== '');
+      
+      // Currently we're only supporting the first client
+      // In a full implementation, you would use this to create multiple invoices
+      const firstClientRows = csvData.filter(row => 
+        row[clientIdentifierIndex] === uniqueClientIds[0]
+      );
+      
+      // Process client info from the first row
+      const clientInfo: Partial<ClientInfo> = {};
       csvHeaders.forEach((header, index) => {
         const field = headerMapping[header];
-        if (field && row[index]) {
-          if (field === 'description' || field === 'category') {
-            item[field] = row[index];
-          } else {
-            item[field] = parseFloat(row[index]) || 0;
-          }
+        if (field && field.startsWith('client') && firstClientRows[0][index]) {
+          const clientField = field.replace('client', '').charAt(0).toLowerCase() + 
+                             field.replace('client', '').slice(1);
+          
+          clientInfo[clientField as keyof ClientInfo] = firstClientRows[0][index];
         }
       });
       
-      if (item.description) {
-        addLineItem(item);
+      // Update client info
+      if (Object.keys(clientInfo).length > 0) {
+        updateClientInfo(clientInfo);
       }
-    });
+      
+      // Process line items
+      firstClientRows.forEach(row => {
+        const item: any = {
+          description: "",
+          quantity: 1,
+          unitPrice: 0,
+          taxRate: 0,
+          discount: 0,
+          category: "",
+        };
+        
+        csvHeaders.forEach((header, index) => {
+          const field = headerMapping[header];
+          if (field && !field.startsWith('client') && row[index]) {
+            if (field === 'description' || field === 'category') {
+              item[field] = row[index];
+            } else {
+              item[field] = parseFloat(row[index]) || 0;
+            }
+          }
+        });
+        
+        if (item.description) {
+          addLineItem(item);
+        }
+      });
+      
+      toast({
+        title: "CSV Import Successful",
+        description: `Imported client data and ${firstClientRows.length} line items`,
+      });
+    } else {
+      // Standard import for just line items
+      csvData.forEach(row => {
+        const item: any = {
+          description: "",
+          quantity: 1,
+          unitPrice: 0,
+          taxRate: 0,
+          discount: 0,
+          category: "",
+        };
+        
+        csvHeaders.forEach((header, index) => {
+          const field = headerMapping[header];
+          if (field && row[index]) {
+            if (field === 'description' || field === 'category') {
+              item[field] = row[index];
+            } else {
+              item[field] = parseFloat(row[index]) || 0;
+            }
+          }
+        });
+        
+        if (item.description) {
+          addLineItem(item);
+        }
+      });
+      
+      toast({
+        title: "CSV Import Successful",
+        description: `Imported ${csvData.length} line items`,
+      });
+    }
     
     setIsImportingCsv(false);
-    toast({
-      title: "CSV Import Successful",
-      description: `Imported ${csvData.length} line items`,
-    });
   };
 
   const formatCurrency = (amount: number) => {
@@ -175,6 +318,10 @@ const LineItems = () => {
       style: 'currency',
       currency: invoiceData.currency || 'USD',
     }).format(amount);
+  };
+
+  const handleCategorySeparationToggle = () => {
+    toggleCategorySeparation();
   };
 
   return (
@@ -211,12 +358,24 @@ const LineItems = () => {
                             onChange={(e) => handleMappingChange(header, e.target.value)}
                           >
                             <option value="">-- Ignore this column --</option>
-                            <option value="description">Description</option>
-                            <option value="quantity">Quantity</option>
-                            <option value="unitPrice">Unit Price</option>
-                            <option value="taxRate">Tax Rate (%)</option>
-                            <option value="discount">Discount (%)</option>
-                            <option value="category">Category</option>
+                            <optgroup label="Line Item Fields">
+                              <option value="description">Description</option>
+                              <option value="quantity">Quantity</option>
+                              <option value="unitPrice">Unit Price</option>
+                              <option value="taxRate">Tax Rate (%)</option>
+                              <option value="discount">Discount (%)</option>
+                              <option value="category">Category</option>
+                            </optgroup>
+                            <optgroup label="Client Fields">
+                              <option value="clientName">Client Name</option>
+                              <option value="clientEmail">Client Email</option>
+                              <option value="clientPhone">Client Phone</option>
+                              <option value="clientAddress">Client Address</option>
+                              <option value="clientCity">Client City</option>
+                              <option value="clientState">Client State</option>
+                              <option value="clientZip">Client ZIP</option>
+                              <option value="clientCountry">Client Country</option>
+                            </optgroup>
                           </select>
                         </td>
                         <td className="py-2">
@@ -346,7 +505,17 @@ const LineItems = () => {
             {invoiceData.lineItems.length > 0 ? (
               <Card>
                 <CardContent className="pt-6">
-                  <h2 className="text-xl font-semibold mb-4">Line Items</h2>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold">Line Items</h2>
+                    <div className="flex items-center space-x-2">
+                      <Switch 
+                        id="separate-categories"
+                        checked={invoiceData.separateCategories}
+                        onCheckedChange={handleCategorySeparationToggle}
+                      />
+                      <Label htmlFor="separate-categories">Separate items by category</Label>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
@@ -357,6 +526,7 @@ const LineItems = () => {
                           <th className="text-right pb-2">Tax %</th>
                           <th className="text-right pb-2">Disc %</th>
                           <th className="text-right pb-2">Total</th>
+                          <th className="text-center pb-2">Category</th>
                           <th className="text-center pb-2">Actions</th>
                         </tr>
                       </thead>
@@ -411,6 +581,14 @@ const LineItems = () => {
                             </td>
                             <td className="py-3 pr-4 text-right font-medium">
                               {formatCurrency(item.total)}
+                            </td>
+                            <td className="py-3 text-center">
+                              <Input
+                                value={item.category || ""}
+                                onChange={(e) => handleUpdateItem(item.id, "category", e.target.value)}
+                                className="border-0 p-0 h-auto bg-transparent text-center"
+                                placeholder="None"
+                              />
                             </td>
                             <td className="py-3 text-center">
                               <Button

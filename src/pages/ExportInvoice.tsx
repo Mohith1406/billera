@@ -1,51 +1,65 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
 import Layout from "@/components/Layout";
-import { Download, Printer, Mail } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import html2pdf from "html2pdf.js";
+import html2pdf from 'html2pdf.js';
 import { 
-  ProfessionalTemplate, 
-  ModernTemplate, 
-  ClassicTemplate, 
-  MinimalTemplate, 
-  CreativeTemplate 
-} from "@/templates/InvoiceTemplates";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
 
 const ExportInvoice = () => {
-  const { invoiceData, setInvoiceData, setCurrentStep } = useInvoice();
+  const { invoiceData, setCurrentStep } = useInvoice();
   const { toast } = useToast();
-  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
-  
-  useEffect(() => {
-    setCurrentStep(5);
-    
-    // Generate a random invoice number if not already set
-    if (!invoiceData.invoiceNumber) {
-      const randomInvoiceNumber = `INV-${Math.floor(100000 + Math.random() * 900000)}`;
-      setInvoiceData(prev => ({
-        ...prev,
-        invoiceNumber: randomInvoiceNumber
-      }));
-    }
-  }, [setCurrentStep, invoiceData.invoiceNumber, setInvoiceData]);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setInvoiceData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  useEffect(() => {
+    setCurrentStep(6);
+  }, [setCurrentStep]);
+
+  const handleDownloadPdf = async () => {
+    if (!invoiceRef.current) return;
+    
+    setIsGeneratingPdf(true);
+    
+    try {
+      const options = {
+        margin: 10,
+        filename: `Invoice-${invoiceData.invoiceNumber || 'Draft'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      await html2pdf().from(invoiceRef.current).set(options).save();
+      
+      toast({
+        title: "PDF Downloaded",
+        description: "Your invoice has been downloaded as a PDF"
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "There was a problem generating your PDF",
+        variant: "destructive"
+      });
+      console.error("PDF generation error:", error);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   const formatCurrency = (amount: number) => {
@@ -55,261 +69,217 @@ const ExportInvoice = () => {
     }).format(amount);
   };
 
-  const handleGeneratePdf = async () => {
-    if (!invoiceRef.current) return;
-    
-    setIsPdfGenerating(true);
-    
-    try {
-      // Apply white background style temporarily for PDF generation
-      const originalStyle = invoiceRef.current.style.background;
-      invoiceRef.current.style.background = "white";
-      
-      // Generate filename
-      const fileName = `Invoice-${invoiceData.invoiceNumber}-${new Date().toISOString().split('T')[0]}.pdf`;
-      
-      await html2pdf()
-        .from(invoiceRef.current)
-        .set({
-          filename: fileName,
-          margin: [10, 10, 10, 10], // Add margins [top, right, bottom, left] in mm
-          html2canvas: {
-            scale: 4,  // Increased scale for higher quality
-            useCORS: true,
-            logging: false,
-            backgroundColor: "#ffffff",
-            letterRendering: true, // Improves text rendering
-            dpi: 300, // Higher DPI for better resolution
-            imageTimeout: 0, // No timeout for image loading
-          },
-          jsPDF: {
-            unit: "mm",
-            format: "a4",
-            orientation: "portrait",
-            compress: false, // No compression for better quality
-            precision: 16, // Higher precision for vector graphics
-            hotfixes: ["px_scaling"], // Fix scaling issues
-          },
-          pagebreak: { mode: 'avoid-all' }
-        })
-        .save();
-      
-      // Restore original style
-      invoiceRef.current.style.background = originalStyle;
-      
-      toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been generated and downloaded successfully."
-      });
-    } catch (error) {
-      console.error("Error generating PDF:", error);
-      toast({
-        title: "Error Generating PDF", 
-        description: "There was a problem generating your PDF. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsPdfGenerating(false);
-    }
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }).format(date);
   };
 
-  const handleEmailInvoice = () => {
-    toast({
-      title: "Email Feature Coming Soon",
-      description: "The email functionality will be available in a future update."
+  // Group line items by category if separateCategories is enabled
+  const getGroupedLineItems = () => {
+    if (!invoiceData.separateCategories) {
+      return [{ category: '', items: invoiceData.lineItems }];
+    }
+
+    const groupedItems: { category: string, items: typeof invoiceData.lineItems }[] = [];
+    const itemsByCategory: Record<string, typeof invoiceData.lineItems> = {};
+
+    // Group items by category
+    invoiceData.lineItems.forEach(item => {
+      const category = item.category || 'Uncategorized';
+      if (!itemsByCategory[category]) {
+        itemsByCategory[category] = [];
+      }
+      itemsByCategory[category].push(item);
     });
-  };
 
-  const handlePrintInvoice = () => {
-    toast({
-      title: "Print Feature Coming Soon",
-      description: "The print functionality will be available in a future update."
+    // Convert to array format
+    Object.entries(itemsByCategory).forEach(([category, items]) => {
+      groupedItems.push({ category, items });
     });
+
+    return groupedItems;
   };
 
-  // Render the appropriate template based on the selected template
-  const renderTemplate = () => {
-    if (!invoiceData.template) {
-      return (
-        <div className="p-8 border rounded-md bg-gray-50 flex items-center justify-center min-h-[500px]">
-          <p className="text-muted-foreground">Please select a template to preview your invoice</p>
-        </div>
-      );
-    }
-
-    const templateProps = {
-      invoiceData,
-      formatCurrency,
-      innerRef: invoiceRef
-    };
-
-    switch (invoiceData.template.id) {
-      case "professional":
-        return <ProfessionalTemplate {...templateProps} />;
-      case "modern":
-        return <ModernTemplate {...templateProps} />;
-      case "classic":
-        return <ClassicTemplate {...templateProps} />;
-      case "minimal":
-        return <MinimalTemplate {...templateProps} />;
-      case "creative":
-        return <CreativeTemplate {...templateProps} />;
-      default:
-        return <ProfessionalTemplate {...templateProps} />;
-    }
-  };
+  const groupedLineItems = getGroupedLineItems();
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-3">Generate & Export Invoice</h1>
+          <h1 className="text-3xl font-bold mb-3">Export Invoice</h1>
           <p className="text-muted-foreground">
-            Finalize your invoice details and export it in your preferred format.
+            Preview your invoice and download it as a PDF or print it.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div>
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Invoice Details</h2>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="invoiceNumber">Invoice Number</Label>
-                      <Input
-                        id="invoiceNumber"
-                        name="invoiceNumber"
-                        value={invoiceData.invoiceNumber}
-                        onChange={handleInputChange}
-                        placeholder="INV-123456"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="currency">Currency</Label>
-                      <select
-                        id="currency"
-                        name="currency"
-                        value={invoiceData.currency}
-                        onChange={(e) => handleInputChange(e as any)}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="USD">USD (US Dollar)</option>
-                        <option value="EUR">EUR (Euro)</option>
-                        <option value="GBP">GBP (British Pound)</option>
-                        <option value="CAD">CAD (Canadian Dollar)</option>
-                        <option value="AUD">AUD (Australian Dollar)</option>
-                        <option value="INR">INR (Indian Rupee)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="invoiceDate">Invoice Date</Label>
-                      <Input
-                        id="invoiceDate"
-                        name="invoiceDate"
-                        type="date"
-                        value={invoiceData.invoiceDate}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="dueDate">Due Date</Label>
-                      <Input
-                        id="dueDate"
-                        name="dueDate"
-                        type="date"
-                        value={invoiceData.dueDate}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      name="notes"
-                      value={invoiceData.notes}
-                      onChange={handleInputChange}
-                      placeholder="Any additional notes for the client..."
-                      rows={3}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="terms">Terms & Conditions</Label>
-                    <Textarea
-                      id="terms"
-                      name="terms"
-                      value={invoiceData.terms}
-                      onChange={handleInputChange}
-                      placeholder="Payment terms and conditions..."
-                      rows={3}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Export Options</h2>
-                <div className="space-y-4">
-                  <Button 
-                    onClick={handleGeneratePdf} 
-                    className="w-full flex items-center justify-center gap-2 py-6"
-                    disabled={isPdfGenerating}
-                  >
-                    {isPdfGenerating ? (
-                      <>Generating...</>
-                    ) : (
-                      <>
-                        <Download className="w-5 h-5" />
-                        Download PDF
-                      </>
-                    )}
-                  </Button>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button 
-                      variant="outline" 
-                      onClick={handleEmailInvoice}
-                      className="flex items-center justify-center gap-2"
-                    >
-                      <Mail className="w-4 h-4" />
-                      Email Invoice
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handlePrintInvoice}
-                      className="flex items-center justify-center gap-2"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Print Invoice
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div>
-            <Card className="h-full">
-              <CardContent className="pt-6 h-full">
-                <h2 className="text-xl font-semibold mb-4">Invoice Preview</h2>
-                
-                <div className="border rounded-md bg-gray-50 overflow-auto max-h-[calc(100vh-12rem)] shadow-md w-full md:min-w-[500px] lg:min-w-[600px]">
-                  {renderTemplate()}
-                </div>
-                
-                <div className="mt-4 text-center text-sm text-muted-foreground">
-                  <p>This is a preview. The actual PDF may look slightly different.</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="flex justify-end gap-4 mb-6">
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={handlePrint}
+          >
+            <Printer className="w-4 h-4" />
+            Print
+          </Button>
+          <Button 
+            className="gap-2"
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+          >
+            <Download className="w-4 h-4" />
+            {isGeneratingPdf ? 'Generating PDF...' : 'Download PDF'}
+          </Button>
         </div>
+
+        <Card className="mb-8 w-full">
+          <CardContent className="p-8">
+            <div ref={invoiceRef} className="bg-white text-black p-8 max-w-4xl mx-auto">
+              {/* Invoice Header */}
+              <div className="flex justify-between items-start mb-12">
+                <div>
+                  {invoiceData.businessInfo.logo && (
+                    <img 
+                      src={invoiceData.businessInfo.logo} 
+                      alt="Business Logo" 
+                      className="mb-4 max-h-16 max-w-48 object-contain"
+                    />
+                  )}
+                  <h1 className="text-3xl font-bold">INVOICE</h1>
+                  {invoiceData.invoiceNumber && (
+                    <p className="text-gray-600">#{invoiceData.invoiceNumber}</p>
+                  )}
+                </div>
+
+                <div className="text-right">
+                  <h2 className="font-bold text-xl mb-1">{invoiceData.businessInfo.name}</h2>
+                  <p>{invoiceData.businessInfo.address}</p>
+                  <p>{invoiceData.businessInfo.city}, {invoiceData.businessInfo.state} {invoiceData.businessInfo.zip}</p>
+                  <p>{invoiceData.businessInfo.country}</p>
+                  <p>{invoiceData.businessInfo.phone}</p>
+                  <p>{invoiceData.businessInfo.email}</p>
+                  {invoiceData.businessInfo.website && (
+                    <p>{invoiceData.businessInfo.website}</p>
+                  )}
+                  {invoiceData.businessInfo.taxId && (
+                    <p>Tax ID: {invoiceData.businessInfo.taxId}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Invoice Info & Client Info */}
+              <div className="flex justify-between mb-12">
+                <div>
+                  <h3 className="font-bold mb-2 text-gray-700">Bill To:</h3>
+                  <h4 className="font-semibold">{invoiceData.clientInfo.name}</h4>
+                  <p>{invoiceData.clientInfo.address}</p>
+                  <p>{invoiceData.clientInfo.city}, {invoiceData.clientInfo.state} {invoiceData.clientInfo.zip}</p>
+                  <p>{invoiceData.clientInfo.country}</p>
+                  <p>{invoiceData.clientInfo.phone}</p>
+                  <p>{invoiceData.clientInfo.email}</p>
+                </div>
+
+                <div className="text-right">
+                  <div className="mb-2">
+                    <span className="font-bold text-gray-700">Invoice Date:</span>
+                    <span className="ml-2">{formatDate(invoiceData.invoiceDate)}</span>
+                  </div>
+                  <div className="mb-2">
+                    <span className="font-bold text-gray-700">Due Date:</span>
+                    <span className="ml-2">{formatDate(invoiceData.dueDate)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              {groupedLineItems.map((group, groupIndex) => (
+                <div key={groupIndex} className="mb-8">
+                  {group.category && invoiceData.separateCategories && (
+                    <h3 className="font-bold text-lg mb-2">{group.category}</h3>
+                  )}
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-100">
+                        {invoiceData.columnVisibility.description && <TableHead>Description</TableHead>}
+                        {invoiceData.columnVisibility.quantity && <TableHead className="text-right">Qty</TableHead>}
+                        {invoiceData.columnVisibility.unitPrice && <TableHead className="text-right">Price</TableHead>}
+                        {invoiceData.columnVisibility.taxRate && <TableHead className="text-right">Tax %</TableHead>}
+                        {invoiceData.columnVisibility.discount && <TableHead className="text-right">Disc %</TableHead>}
+                        {invoiceData.columnVisibility.category && !invoiceData.separateCategories && (
+                          <TableHead>Category</TableHead>
+                        )}
+                        {invoiceData.columnVisibility.total && <TableHead className="text-right">Total</TableHead>}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {group.items.map((item) => (
+                        <TableRow key={item.id}>
+                          {invoiceData.columnVisibility.description && <TableCell>{item.description}</TableCell>}
+                          {invoiceData.columnVisibility.quantity && <TableCell className="text-right">{item.quantity}</TableCell>}
+                          {invoiceData.columnVisibility.unitPrice && <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>}
+                          {invoiceData.columnVisibility.taxRate && <TableCell className="text-right">{item.taxRate}%</TableCell>}
+                          {invoiceData.columnVisibility.discount && <TableCell className="text-right">{item.discount}%</TableCell>}
+                          {invoiceData.columnVisibility.category && !invoiceData.separateCategories && (
+                            <TableCell>{item.category || ''}</TableCell>
+                          )}
+                          {invoiceData.columnVisibility.total && <TableCell className="text-right font-medium">{formatCurrency(item.total)}</TableCell>}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+
+              {/* Totals */}
+              <div className="flex justify-end mb-8">
+                <div className="w-64">
+                  <div className="flex justify-between py-2 border-t">
+                    <span className="font-medium">Subtotal:</span>
+                    <span>{formatCurrency(invoiceData.subtotal)}</span>
+                  </div>
+                  {invoiceData.discountTotal > 0 && (
+                    <div className="flex justify-between py-2">
+                      <span className="font-medium">Discount:</span>
+                      <span>-{formatCurrency(invoiceData.discountTotal)}</span>
+                    </div>
+                  )}
+                  {invoiceData.taxTotal > 0 && (
+                    <div className="flex justify-between py-2">
+                      <span className="font-medium">Tax:</span>
+                      <span>{formatCurrency(invoiceData.taxTotal)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-2 border-t border-t-2 font-bold">
+                    <span>Total:</span>
+                    <span>{formatCurrency(invoiceData.grandTotal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes & Terms */}
+              {(invoiceData.notes || invoiceData.terms) && (
+                <div className="mt-12 border-t pt-4">
+                  {invoiceData.notes && (
+                    <div className="mb-4">
+                      <h4 className="font-bold mb-2">Notes</h4>
+                      <p className="text-gray-700">{invoiceData.notes}</p>
+                    </div>
+                  )}
+                  {invoiceData.terms && (
+                    <div>
+                      <h4 className="font-bold mb-2">Terms & Conditions</h4>
+                      <p className="text-gray-700">{invoiceData.terms}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

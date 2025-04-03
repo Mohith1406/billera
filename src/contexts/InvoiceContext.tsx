@@ -72,6 +72,7 @@ export type InvoiceData = {
   taxTotal: number;
   discountTotal: number;
   grandTotal: number;
+  separateCategories: boolean;
 };
 
 interface InvoiceContextType {
@@ -88,6 +89,7 @@ interface InvoiceContextType {
   updateColumnVisibility: (columns: Partial<ColumnVisibility>) => void;
   calculateTotals: () => void;
   resetInvoice: () => void;
+  toggleCategorySeparation: () => void;
 }
 
 // Available templates
@@ -171,6 +173,7 @@ const defaultInvoiceData: InvoiceData = {
   taxTotal: 0,
   discountTotal: 0,
   grandTotal: 0,
+  separateCategories: false,
 };
 
 export const InvoiceContext = createContext<InvoiceContextType | undefined>(undefined);
@@ -280,6 +283,13 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
+  const toggleCategorySeparation = () => {
+    setInvoiceData(prev => ({
+      ...prev,
+      separateCategories: !prev.separateCategories
+    }));
+  };
+
   const resetInvoice = () => {
     setInvoiceData(defaultInvoiceData);
     setCurrentStep(1);
@@ -301,6 +311,7 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
         updateColumnVisibility,
         calculateTotals,
         resetInvoice,
+        toggleCategorySeparation,
       }}
     >
       {children}

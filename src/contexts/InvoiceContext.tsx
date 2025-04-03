@@ -75,10 +75,16 @@ export type InvoiceData = {
   separateCategories: boolean;
 };
 
+export type InvoiceBatch = {
+  currentIndex: number;
+  invoices: InvoiceData[];
+};
+
 interface InvoiceContextType {
   invoiceData: InvoiceData;
   currentStep: number;
   availableTemplates: InvoiceTemplate[];
+  invoiceBatch: InvoiceBatch | null;
   setInvoiceData: React.Dispatch<React.SetStateAction<InvoiceData>>;
   setCurrentStep: React.Dispatch<React.SetStateAction<number>>;
   updateBusinessInfo: (info: Partial<BusinessInfo>) => void;
@@ -90,6 +96,9 @@ interface InvoiceContextType {
   calculateTotals: () => void;
   resetInvoice: () => void;
   toggleCategorySeparation: () => void;
+  createMultipleInvoices: (invoices: Array<{clientInfo: Partial<ClientInfo>, lineItems: Omit<LineItem, "id" | "total">[]}>) => void;
+  selectNextInvoice: () => void;
+  selectPreviousInvoice: () => void;
 }
 
 // Available templates
@@ -181,6 +190,7 @@ export const InvoiceContext = createContext<InvoiceContextType | undefined>(unde
 export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [invoiceData, setInvoiceData] = useState<InvoiceData>(defaultInvoiceData);
   const [currentStep, setCurrentStep] = useState(1);
+  const [invoiceBatch, setInvoiceBatch] = useState<InvoiceBatch | null>(null);
 
   const updateBusinessInfo = (info: Partial<BusinessInfo>) => {
     setInvoiceData((prev) => ({
@@ -293,6 +303,119 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
   const resetInvoice = () => {
     setInvoiceData(defaultInvoiceData);
     setCurrentStep(1);
+    setInvoiceBatch(null);
+  };
+
+  // New function to create multiple invoices
+  const createMultipleInvoices = (invoices: Array<{clientInfo: Partial<ClientInfo>, lineItems: Omit<LineItem, "id" | "total">[]}>) => {
+    // Get the current business info and template
+    const { businessInfo, template, currency, language, terms, notes, invoiceDate, dueDate, columnVisibility, separateCategories } = invoiceData;
+    
+    // Create an array of complete invoice data objects
+    const completeInvoices: InvoiceData[] = invoices.map((invoice, index) => {
+      // Create line items with IDs and totals
+      const lineItemsWithIds = invoice.lineItems.map(item => {
+        const id = crypto.randomUUID();
+        const total = calculateItemTotal(item);
+        return { ...item, id, total };
+      });
+      
+      // Calculate totals for this invoice
+      const subtotal = lineItemsWithIds.reduce(
+        (sum, item) => sum + item.quantity * item.unitPrice,
+        0
+      );
+      
+      const discountTotal = lineItemsWithIds.reduce(
+        (sum, item) => sum + (item.quantity * item.unitPrice * (item.discount / 100)),
+        0
+      );
+      
+      const taxTotal = lineItemsWithIds.reduce(
+        (sum, item) => {
+          const itemSubtotal = item.quantity * item.unitPrice;
+          const itemDiscount = itemSubtotal * (item.discount / 100);
+          return sum + ((itemSubtotal - itemDiscount) * (item.taxRate / 100));
+        },
+        0
+      );
+      
+      const grandTotal = subtotal - discountTotal + taxTotal;
+      
+      // Create a complete client info object
+      const completeClientInfo: ClientInfo = {
+        name: "",
+        address: "",
+        city: "",
+        state: "",
+        zip: "",
+        country: "",
+        phone: "",
+        email: "",
+        ...invoice.clientInfo
+      };
+      
+      // Generate a unique invoice number
+      const invoiceNumber = `INV-${(index + 1).toString().padStart(3, '0')}`;
+      
+      return {
+        invoiceNumber,
+        invoiceDate,
+        dueDate,
+        currency,
+        language,
+        notes,
+        terms,
+        template,
+        businessInfo,
+        clientInfo: completeClientInfo,
+        lineItems: lineItemsWithIds,
+        columnVisibility,
+        subtotal,
+        taxTotal,
+        discountTotal,
+        grandTotal,
+        separateCategories,
+      };
+    });
+    
+    // Set the first invoice as the current one
+    if (completeInvoices.length > 0) {
+      setInvoiceData(completeInvoices[0]);
+      
+      // Create invoice batch if there are multiple invoices
+      if (completeInvoices.length > 1) {
+        setInvoiceBatch({
+          currentIndex: 0,
+          invoices: completeInvoices
+        });
+      } else {
+        setInvoiceBatch(null);
+      }
+    }
+  };
+
+  // Navigate between invoices in a batch
+  const selectNextInvoice = () => {
+    if (invoiceBatch && invoiceBatch.currentIndex < invoiceBatch.invoices.length - 1) {
+      const nextIndex = invoiceBatch.currentIndex + 1;
+      setInvoiceData(invoiceBatch.invoices[nextIndex]);
+      setInvoiceBatch({
+        ...invoiceBatch,
+        currentIndex: nextIndex
+      });
+    }
+  };
+
+  const selectPreviousInvoice = () => {
+    if (invoiceBatch && invoiceBatch.currentIndex > 0) {
+      const prevIndex = invoiceBatch.currentIndex - 1;
+      setInvoiceData(invoiceBatch.invoices[prevIndex]);
+      setInvoiceBatch({
+        ...invoiceBatch,
+        currentIndex: prevIndex
+      });
+    }
   };
 
   return (
@@ -301,6 +424,7 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
         invoiceData,
         currentStep,
         availableTemplates: invoiceTemplates,
+        invoiceBatch,
         setInvoiceData,
         setCurrentStep,
         updateBusinessInfo,
@@ -312,6 +436,9 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
         calculateTotals,
         resetInvoice,
         toggleCategorySeparation,
+        createMultipleInvoices,
+        selectNextInvoice,
+        selectPreviousInvoice,
       }}
     >
       {children}

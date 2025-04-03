@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useInvoice, ClientInfo } from "@/contexts/InvoiceContext";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { Plus, Trash2, FileUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { useNavigate } from "react-router-dom";
 
 interface CsvRow {
   // Client fields
@@ -40,9 +40,12 @@ const LineItems = () => {
     calculateTotals, 
     setCurrentStep,
     updateClientInfo,
-    toggleCategorySeparation
+    toggleCategorySeparation,
+    resetInvoice,
+    createMultipleInvoices
   } = useInvoice();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const [newItem, setNewItem] = useState({
     description: "",
@@ -58,6 +61,7 @@ const LineItems = () => {
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [headerMapping, setHeaderMapping] = useState<Record<string, string>>({});
   const [hasClientData, setHasClientData] = useState(false);
+  const [clientCount, setClientCount] = useState(0);
 
   useEffect(() => {
     setCurrentStep(3);
@@ -117,7 +121,7 @@ const LineItems = () => {
           if (rows.length > 1) {
             const headers = rows[0];
             setCsvHeaders(headers);
-            setCsvData(rows.slice(1));
+            setCsvData(rows.slice(1).filter(row => row.some(cell => cell.trim() !== '')));
             
             // Initialize default mappings with improved detection logic
             const initialMapping: Record<string, string> = {};
@@ -219,6 +223,24 @@ const LineItems = () => {
             setHeaderMapping(initialMapping);
             setIsImportingCsv(true);
             
+            // Count unique clients
+            if (clientFieldsDetected) {
+              const clientIdentifierHeader = headers.find(header => 
+                initialMapping[header] === 'clientName' || initialMapping[header] === 'clientEmail'
+              );
+              
+              if (clientIdentifierHeader) {
+                const clientIdentifierIndex = headers.indexOf(clientIdentifierHeader);
+                const uniqueClientIds = new Set(
+                  rows.slice(1)
+                    .map(row => row[clientIdentifierIndex])
+                    .filter(id => id && id.trim() !== '')
+                );
+                setClientCount(uniqueClientIds.size);
+                console.log("Found unique clients:", uniqueClientIds.size);
+              }
+            }
+            
             // Log detected mappings for debugging
             console.log("CSV Headers:", headers);
             console.log("Detected mappings:", initialMapping);
@@ -285,62 +307,124 @@ const LineItems = () => {
       
       console.log("Unique client IDs:", uniqueClientIds);
       
-      // Currently we're only supporting the first client
-      // In a full implementation, you would use this to create multiple invoices
-      const firstClientRows = csvData.filter(row => 
-        row[clientIdentifierIndex] === uniqueClientIds[0]
-      );
-      
-      // Process client info from the first row
-      const clientInfo: Partial<ClientInfo> = {};
-      csvHeaders.forEach((header, index) => {
-        const field = headerMapping[header];
-        if (field && field.startsWith('client') && firstClientRows[0][index]) {
-          const clientField = field.replace('client', '').charAt(0).toLowerCase() + 
-                             field.replace('client', '').slice(1);
+      if (uniqueClientIds.length > 1) {
+        // Multiple clients - create separate invoices
+        const invoices = uniqueClientIds.map(clientId => {
+          // Get rows for this client
+          const clientRows = csvData.filter(row => 
+            row[clientIdentifierIndex] === clientId
+          );
           
-          clientInfo[clientField as keyof ClientInfo] = firstClientRows[0][index];
-        }
-      });
-      
-      console.log("Extracted client info:", clientInfo);
-      
-      // Update client info
-      if (Object.keys(clientInfo).length > 0) {
-        updateClientInfo(clientInfo);
-      }
-      
-      // Process line items
-      firstClientRows.forEach(row => {
-        const item: any = {
-          description: "",
-          quantity: 1,
-          unitPrice: 0,
-          taxRate: 0,
-          discount: 0,
-          category: "",
-        };
+          // Process client info
+          const clientInfo: Partial<ClientInfo> = {};
+          csvHeaders.forEach((header, index) => {
+            const field = headerMapping[header];
+            if (field && field.startsWith('client') && clientRows[0][index]) {
+              const clientField = field.replace('client', '').charAt(0).toLowerCase() + 
+                                field.replace('client', '').slice(1);
+              
+              clientInfo[clientField as keyof ClientInfo] = clientRows[0][index];
+            }
+          });
+          
+          // Process line items
+          const lineItems = clientRows.map(row => {
+            const item: any = {
+              description: "",
+              quantity: 1,
+              unitPrice: 0,
+              taxRate: 0,
+              discount: 0,
+              category: "",
+            };
+            
+            csvHeaders.forEach((header, index) => {
+              const field = headerMapping[header];
+              if (field && !field.startsWith('client') && row[index]) {
+                if (field === 'description' || field === 'category') {
+                  item[field] = row[index];
+                } else {
+                  item[field] = parseFloat(row[index]) || 0;
+                }
+              }
+            });
+            
+            return item.description ? item : null;
+          }).filter(Boolean);
+          
+          return {
+            clientInfo,
+            lineItems
+          };
+        });
         
+        // Create multiple invoices
+        createMultipleInvoices(invoices);
+        
+        toast({
+          title: "Multiple Invoices Created",
+          description: `Created ${uniqueClientIds.length} invoices for different clients`,
+        });
+        
+        // Navigate to export page
+        navigate("/export-invoice");
+      } else {
+        // Single client - process as before
+        const clientRows = csvData.filter(row => 
+          row[clientIdentifierIndex] === uniqueClientIds[0]
+        );
+        
+        // Process client info from the first row
+        const clientInfo: Partial<ClientInfo> = {};
         csvHeaders.forEach((header, index) => {
           const field = headerMapping[header];
-          if (field && !field.startsWith('client') && row[index]) {
-            if (field === 'description' || field === 'category') {
-              item[field] = row[index];
-            } else {
-              item[field] = parseFloat(row[index]) || 0;
-            }
+          if (field && field.startsWith('client') && clientRows[0][index]) {
+            const clientField = field.replace('client', '').charAt(0).toLowerCase() + 
+                               field.replace('client', '').slice(1);
+            
+            clientInfo[clientField as keyof ClientInfo] = clientRows[0][index];
           }
         });
         
-        if (item.description) {
-          addLineItem(item);
+        console.log("Extracted client info:", clientInfo);
+        
+        // Update client info
+        if (Object.keys(clientInfo).length > 0) {
+          updateClientInfo(clientInfo);
         }
-      });
-      
-      toast({
-        title: "CSV Import Successful",
-        description: `Imported client data and ${firstClientRows.length} line items`,
-      });
+        
+        // Process line items
+        clientRows.forEach(row => {
+          const item: any = {
+            description: "",
+            quantity: 1,
+            unitPrice: 0,
+            taxRate: 0,
+            discount: 0,
+            category: "",
+          };
+          
+          csvHeaders.forEach((header, index) => {
+            const field = headerMapping[header];
+            if (field && !field.startsWith('client') && row[index]) {
+              if (field === 'description' || field === 'category') {
+                item[field] = row[index];
+              } else {
+                item[field] = parseFloat(row[index]) || 0;
+              }
+            }
+          });
+          
+          if (item.description) {
+            addLineItem(item);
+          }
+        });
+        
+        toast({
+          title: "CSV Import Successful",
+          description: `Imported client data and ${clientRows.length} line items`,
+        });
+      }
     } else {
       // Standard import for just line items
       csvData.forEach(row => {
@@ -391,7 +475,6 @@ const LineItems = () => {
     toggleCategorySeparation();
   };
 
-  // Call calculateTotals manually when line items change
   useEffect(() => {
     calculateTotals();
   }, [invoiceData.lineItems, calculateTotals]);
@@ -410,6 +493,12 @@ const LineItems = () => {
           <Card className="mb-8">
             <CardContent className="pt-6">
               <h2 className="text-xl font-semibold mb-4">Map CSV Headers to Invoice Fields</h2>
+              {clientCount > 1 && (
+                <div className="bg-yellow-50 border border-yellow-200 p-3 rounded mb-4">
+                  <p className="text-yellow-800 font-medium">Multiple Clients Detected</p>
+                  <p className="text-yellow-700 text-sm">Found {clientCount} unique clients in your CSV. Importing will create {clientCount} separate invoices, one for each client.</p>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>

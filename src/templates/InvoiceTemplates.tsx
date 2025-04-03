@@ -8,6 +8,35 @@ type TemplateProps = {
   innerRef?: React.RefObject<HTMLDivElement>;
 };
 
+// Create a component that selects the right template based on templateId
+export const InvoiceTemplates: React.FC<{
+  templateId: string;
+  invoice: InvoiceData;
+  innerRef?: React.RefObject<HTMLDivElement>;
+}> = ({ templateId, invoice, innerRef }) => {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat(invoice.locale || 'en-US', {
+      style: 'currency',
+      currency: invoice.currency || 'USD',
+    }).format(amount);
+  };
+
+  switch (templateId) {
+    case 'professional':
+      return <ProfessionalTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+    case 'modern':
+      return <ModernTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+    case 'classic':
+      return <ClassicTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+    case 'minimal':
+      return <MinimalTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+    case 'creative':
+      return <CreativeTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+    default:
+      return <ProfessionalTemplate invoiceData={invoice} formatCurrency={formatCurrency} innerRef={innerRef} />;
+  }
+};
+
 export const ProfessionalTemplate: React.FC<TemplateProps> = ({ invoiceData, formatCurrency, innerRef }) => {
   return (
     <div 

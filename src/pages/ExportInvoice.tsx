@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
@@ -33,10 +32,8 @@ const ExportInvoice = () => {
     setIsGenerating(true);
     
     try {
-      // Clone the element to modify it without affecting the view
       const element = invoiceRef.current.cloneNode(true) as HTMLElement;
       
-      // Generate PDF with better quality settings
       const pdfOptions = {
         margin: 10,
         filename: `Invoice_${invoiceData.invoiceNumber}.pdf`,
@@ -112,7 +109,6 @@ const ExportInvoice = () => {
   };
 
   const sendInvoiceByEmail = () => {
-    // This would normally send the email, but for now we'll just show a toast
     toast({
       title: "Preparing Email",
       description: "Email functionality would send the invoice to the client",
@@ -173,11 +169,12 @@ const ExportInvoice = () => {
           <TabsContent value="preview" className="mt-0">
             <Card className="mb-6 border border-gray-200">
               <CardContent className="p-0 overflow-auto">
-                <div ref={invoiceRef} className="p-8">
+                <div className="p-8">
                   {invoiceData.template ? (
                     <InvoiceTemplates 
                       templateId={invoiceData.template.id} 
-                      invoice={invoiceData} 
+                      invoice={invoiceData}
+                      innerRef={invoiceRef}
                     />
                   ) : (
                     <div className="text-center p-8">

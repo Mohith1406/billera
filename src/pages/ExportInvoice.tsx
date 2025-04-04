@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
@@ -17,7 +18,8 @@ const ExportInvoice = () => {
     setCurrentStep,
     invoiceBatch,
     selectNextInvoice,
-    selectPreviousInvoice
+    selectPreviousInvoice,
+    setInvoiceData
   } = useInvoice();
   const { toast } = useToast();
   const invoiceRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,13 @@ const ExportInvoice = () => {
         ...prev,
         invoiceNumber: randomInvoiceNumber
       }));
+    }
+  }, [invoiceData.invoiceNumber, setCurrentStep, setInvoiceData]);
+
+  const generatePDF = async (forDownload = true) => {
+    if (!invoiceRef.current) {
+      console.error("Invoice reference is null, cannot generate PDF");
+      return null;
     }
     
     try {

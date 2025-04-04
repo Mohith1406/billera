@@ -59,7 +59,7 @@ const ExportInvoice = () => {
           useCORS: true,
           letterRendering: true
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as 'portrait' | 'landscape' }
       };
       
       if (!forDownload) {

@@ -107,34 +107,56 @@ const ExportInvoice = () => {
     setIsBatchGenerating(true);
     const zip = new JSZip();
     const currentIndex = invoiceBatch.currentIndex;
-    const toastId = toast({
+    
+    toast({
       title: "Generating Batch",
       description: "Creating PDFs for all invoices...",
     });
     
     try {
+      // First make sure we render the current invoice properly
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate the current invoice PDF first
+      const currentPdf = await generatePDF(false);
+      if (currentPdf) {
+        const filename = `Invoice_${invoiceData.invoiceNumber}.pdf`;
+        zip.file(filename, currentPdf);
+        console.log(`Added current invoice ${filename} to ZIP`);
+      }
+      
+      // Then process the other invoices in the batch
       for (let i = 0; i < invoiceBatch.invoices.length; i++) {
-        if (i !== currentIndex) {
-          selectNextInvoice();
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
+        if (i === currentIndex) continue; // Skip the current one since we already processed it
         
-        const pdfBlob = await generatePDF(false);
-        if (pdfBlob) {
-          const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
-          zip.file(filename, pdfBlob);
+        // Switch to the next invoice and wait for it to render
+        selectNextInvoice();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Now generate the PDF for this invoice
+        if (invoiceRef.current) {
+          const pdfBlob = await generatePDF(false);
+          if (pdfBlob) {
+            const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
+            zip.file(filename, pdfBlob);
+            console.log(`Added invoice ${filename} to ZIP`);
+          }
+        } else {
+          console.error("Invoice reference is null when generating batch PDFs");
         }
       }
       
+      // Return to the original invoice
       while (invoiceBatch.currentIndex !== currentIndex) {
         if (invoiceBatch.currentIndex > currentIndex) {
           selectPreviousInvoice();
         } else {
           selectNextInvoice();
         }
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       
+      // Generate and save the ZIP file
       const content = await zip.generateAsync({ type: "blob" });
       saveAs(content, "Invoices.zip");
       

@@ -535,26 +535,26 @@ export const ClassicTemplate: React.FC<TemplateProps> = ({ invoiceData, formatCu
       <table className="w-full text-sm mb-8 border border-gray-300">
         <thead>
           <tr className="border-b border-gray-300 bg-gray-100">
-            {invoiceData.columnVisibility.description && <th className="text-left py-2 px-4 border-r border-gray-300">Description</th>}
-            {invoiceData.columnVisibility.quantity && <th className="text-right py-2 px-4 border-r border-gray-300">Qty</th>}
-            {invoiceData.columnVisibility.unitPrice && <th className="text-right py-2 px-4 border-r border-gray-300">Price</th>}
-            {invoiceData.columnVisibility.taxRate && <th className="text-right py-2 px-4 border-r border-gray-300">Tax %</th>}
-            {invoiceData.columnVisibility.discount && <th className="text-right py-2 px-4 border-r border-gray-300">Disc %</th>}
-            {invoiceData.columnVisibility.category && <th className="text-left py-2 px-4 border-r border-gray-300">Category</th>}
-            {invoiceData.columnVisibility.total && <th className="text-right py-2 px-4">Total</th>}
+            {invoiceData.columnVisibility.description && <th className="text-left py-3 px-4 border-r border-gray-300">Description</th>}
+            {invoiceData.columnVisibility.quantity && <th className="text-right py-3 px-4 border-r border-gray-300">Qty</th>}
+            {invoiceData.columnVisibility.unitPrice && <th className="text-right py-3 px-4 border-r border-gray-300">Price</th>}
+            {invoiceData.columnVisibility.taxRate && <th className="text-right py-3 px-4 border-r border-gray-300">Tax %</th>}
+            {invoiceData.columnVisibility.discount && <th className="text-right py-3 px-4 border-r border-gray-300">Disc %</th>}
+            {invoiceData.columnVisibility.category && <th className="text-left py-3 px-4 border-r border-gray-300">Category</th>}
+            {invoiceData.columnVisibility.total && <th className="text-right py-3 px-4">Total</th>}
           </tr>
         </thead>
         <tbody>
           {invoiceData.lineItems.length > 0 ? (
             invoiceData.lineItems.map((item) => (
               <tr key={item.id} className="border-b border-gray-300">
-                {invoiceData.columnVisibility.description && <td className="py-2 px-4 border-r border-gray-300">{item.description}</td>}
-                {invoiceData.columnVisibility.quantity && <td className="py-2 px-4 text-right border-r border-gray-300">{item.quantity}</td>}
-                {invoiceData.columnVisibility.unitPrice && <td className="py-2 px-4 text-right border-r border-gray-300">{formatCurrency(item.unitPrice)}</td>}
-                {invoiceData.columnVisibility.taxRate && <td className="py-2 px-4 text-right border-r border-gray-300">{item.taxRate}%</td>}
-                {invoiceData.columnVisibility.discount && <td className="py-2 px-4 text-right border-r border-gray-300">{item.discount}%</td>}
-                {invoiceData.columnVisibility.category && <td className="py-2 px-4 border-r border-gray-300">{item.category || "-"}</td>}
-                {invoiceData.columnVisibility.total && <td className="py-2 px-4 text-right">{formatCurrency(item.total)}</td>}
+                {invoiceData.columnVisibility.description && <td className="py-3 px-4">{item.description}</td>}
+                {invoiceData.columnVisibility.quantity && <td className="py-3 px-4 text-right">{item.quantity}</td>}
+                {invoiceData.columnVisibility.unitPrice && <td className="py-3 px-4 text-right">{formatCurrency(item.unitPrice)}</td>}
+                {invoiceData.columnVisibility.taxRate && <td className="py-3 px-4 text-right">{item.taxRate}%</td>}
+                {invoiceData.columnVisibility.discount && <td className="py-3 px-4 text-right">{item.discount}%</td>}
+                {invoiceData.columnVisibility.category && <td className="py-3 px-4">{item.category || "-"}</td>}
+                {invoiceData.columnVisibility.total && <td className="py-3 px-4 text-right">{formatCurrency(item.total)}</td>}
               </tr>
             ))
           ) : (
@@ -920,13 +920,13 @@ export const CreativeTemplate: React.FC<TemplateProps> = ({ invoiceData, formatC
           {invoiceData.notes && (
             <div className="text-sm p-6 rounded-xl border border-gray-200">
               <h3 className="font-semibold mb-2 text-primary">Notes</h3>
-              <p className="text-gray-600">{invoiceData.notes}</p>
+              <p>{invoiceData.notes}</p>
             </div>
           )}
           {invoiceData.terms && (
             <div className="text-sm p-6 rounded-xl border border-gray-200">
               <h3 className="font-semibold mb-2 text-primary">Terms & Conditions</h3>
-              <p className="text-gray-600">{invoiceData.terms}</p>
+              <p>{invoiceData.terms}</p>
             </div>
           )}
         </div>

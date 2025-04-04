@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, ReactNode } from "react";
 
 // Define types for our context
@@ -61,6 +60,7 @@ export type InvoiceData = {
   dueDate: string;
   currency: string;
   language: string;
+  locale: string;
   notes: string;
   terms: string;
   template: InvoiceTemplate | null;
@@ -142,6 +142,7 @@ const defaultInvoiceData: InvoiceData = {
   dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
   currency: "USD",
   language: "en",
+  locale: "en-US",
   notes: "",
   terms: "Payment is due within 30 days",
   template: null,
@@ -306,21 +307,16 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
     setInvoiceBatch(null);
   };
 
-  // New function to create multiple invoices
   const createMultipleInvoices = (invoices: Array<{clientInfo: Partial<ClientInfo>, lineItems: Omit<LineItem, "id" | "total">[]}>) => {
-    // Get the current business info and template
-    const { businessInfo, template, currency, language, terms, notes, invoiceDate, dueDate, columnVisibility, separateCategories } = invoiceData;
+    const { businessInfo, template, currency, language, locale, terms, notes, invoiceDate, dueDate, columnVisibility, separateCategories } = invoiceData;
     
-    // Create an array of complete invoice data objects
     const completeInvoices: InvoiceData[] = invoices.map((invoice, index) => {
-      // Create line items with IDs and totals
       const lineItemsWithIds = invoice.lineItems.map(item => {
         const id = crypto.randomUUID();
         const total = calculateItemTotal(item);
         return { ...item, id, total };
       });
       
-      // Calculate totals for this invoice
       const subtotal = lineItemsWithIds.reduce(
         (sum, item) => sum + item.quantity * item.unitPrice,
         0
@@ -342,7 +338,6 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
       
       const grandTotal = subtotal - discountTotal + taxTotal;
       
-      // Create a complete client info object
       const completeClientInfo: ClientInfo = {
         name: "",
         address: "",
@@ -355,7 +350,6 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
         ...invoice.clientInfo
       };
       
-      // Generate a unique invoice number
       const invoiceNumber = `INV-${(index + 1).toString().padStart(3, '0')}`;
       
       return {
@@ -364,6 +358,7 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
         dueDate,
         currency,
         language,
+        locale,
         notes,
         terms,
         template,
@@ -379,11 +374,9 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
       };
     });
     
-    // Set the first invoice as the current one
     if (completeInvoices.length > 0) {
       setInvoiceData(completeInvoices[0]);
       
-      // Create invoice batch if there are multiple invoices
       if (completeInvoices.length > 1) {
         setInvoiceBatch({
           currentIndex: 0,
@@ -395,7 +388,6 @@ export const InvoiceProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  // Navigate between invoices in a batch
   const selectNextInvoice = () => {
     if (invoiceBatch && invoiceBatch.currentIndex < invoiceBatch.invoices.length - 1) {
       const nextIndex = invoiceBatch.currentIndex + 1;

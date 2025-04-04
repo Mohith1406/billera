@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
@@ -38,7 +37,7 @@ const ExportInvoice = () => {
         invoiceNumber: randomInvoiceNumber
       }));
     }
-  }, [invoiceData.invoiceNumber, setCurrentStep, setInvoiceData]);
+  }, [setCurrentStep, setInvoiceData, invoiceData.invoiceNumber]);
 
   const generatePDF = async (forDownload = true) => {
     if (!invoiceRef.current) {
@@ -63,20 +62,20 @@ const ExportInvoice = () => {
       };
       
       if (!forDownload) {
-        return html2pdf()
+        return await html2pdf()
           .set(pdfOptions)
           .from(element)
           .outputPdf('blob');
       }
       
-      const pdf = await html2pdf().set(pdfOptions).from(element).save();
+      await html2pdf().set(pdfOptions).from(element).save();
       
       toast({
         title: "PDF Generated",
         description: "Your invoice PDF has been created successfully",
       });
       
-      return pdf;
+      return true;
     } catch (error) {
       console.error("PDF generation error:", error);
       toast({
@@ -114,35 +113,49 @@ const ExportInvoice = () => {
     });
     
     try {
-      // First make sure we render the current invoice properly
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Generate the current invoice PDF first
-      const currentPdf = await generatePDF(false);
-      if (currentPdf) {
-        const filename = `Invoice_${invoiceData.invoiceNumber}.pdf`;
-        zip.file(filename, currentPdf);
-        console.log(`Added current invoice ${filename} to ZIP`);
-      }
-      
-      // Then process the other invoices in the batch
+      // Process each invoice in the batch one by one
       for (let i = 0; i < invoiceBatch.invoices.length; i++) {
-        if (i === currentIndex) continue; // Skip the current one since we already processed it
+        console.log(`Processing invoice ${i + 1} of ${invoiceBatch.invoices.length}`);
         
-        // Switch to the next invoice and wait for it to render
-        selectNextInvoice();
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // If not on the current invoice index, navigate to it
+        while (invoiceBatch.currentIndex !== i) {
+          if (invoiceBatch.currentIndex < i) {
+            selectNextInvoice();
+          } else {
+            selectPreviousInvoice();
+          }
+          // Wait for the UI to update
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
         
-        // Now generate the PDF for this invoice
+        // Generate PDF for the current invoice
         if (invoiceRef.current) {
-          const pdfBlob = await generatePDF(false);
+          console.log(`Generating PDF for invoice ${i + 1}, invoice number: ${invoiceBatch.invoices[i].invoiceNumber}`);
+          
+          const element = invoiceRef.current.cloneNode(true) as HTMLElement;
+          
+          const pdfOptions = {
+            margin: 10,
+            filename: `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { 
+              scale: 2, 
+              useCORS: true,
+              letterRendering: true
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as 'portrait' | 'landscape' }
+          };
+          
+          const pdfBlob = await html2pdf()
+            .set(pdfOptions)
+            .from(element)
+            .outputPdf('blob');
+          
           if (pdfBlob) {
             const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
             zip.file(filename, pdfBlob);
             console.log(`Added invoice ${filename} to ZIP`);
           }
-        } else {
-          console.error("Invoice reference is null when generating batch PDFs");
         }
       }
       
@@ -153,11 +166,18 @@ const ExportInvoice = () => {
         } else {
           selectNextInvoice();
         }
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
       
       // Generate and save the ZIP file
+      console.log("Generating ZIP file...");
       const content = await zip.generateAsync({ type: "blob" });
+      console.log("ZIP file generated, size:", content.size);
+      
+      if (content.size === 0 || content.size === 22) {
+        throw new Error("Generated ZIP file is empty");
+      }
+      
       saveAs(content, "Invoices.zip");
       
       toast({

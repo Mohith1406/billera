@@ -4,6 +4,7 @@ import { useInvoice } from "@/contexts/InvoiceContext";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import html2pdf from "html2pdf.js";
 import { ArrowLeft, ArrowRight, Download, FileArchive, Mail, Printer } from "lucide-react";
 import { InvoiceTemplates } from "@/templates/InvoiceTemplates";
@@ -27,6 +28,7 @@ const ExportInvoice = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [batchAborted, setBatchAborted] = useState(false);
 
   useEffect(() => {
     setCurrentStep(5);
@@ -97,8 +99,12 @@ const ExportInvoice = () => {
 
   const waitForUI = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Improved PDF generation with better error handling
   const generateInvoicePDF = async (invoice: any, index: number): Promise<Blob | null> => {
     console.log(`Creating PDF for invoice ${index + 1}: ${invoice.invoiceNumber}`);
+    
+    // Wait for the invoice to render properly
+    await waitForUI(1000);
     
     if (!invoiceRef.current) {
       console.error(`[Invoice ${index + 1}] Invoice reference is null`);
@@ -134,6 +140,7 @@ const ExportInvoice = () => {
     }
   };
 
+  // Completely revised batch ZIP generation function
   const generateBatchZip = async () => {
     if (!invoiceBatch || !invoiceBatch.invoices.length) {
       toast({
@@ -145,9 +152,11 @@ const ExportInvoice = () => {
     }
     
     setIsBatchGenerating(true);
+    setBatchAborted(false);
+    
     const zip = new JSZip();
-    const currentIndex = invoiceBatch.currentIndex;
     const totalInvoices = invoiceBatch.invoices.length;
+    const originalIndex = invoiceBatch.currentIndex;
     
     setBatchProgress({ current: 0, total: totalInvoices });
     
@@ -158,78 +167,103 @@ const ExportInvoice = () => {
     
     try {
       console.log(`Starting batch process for ${totalInvoices} invoices`);
+      let successCount = 0;
+      let failCount = 0;
       
-      // Process each invoice in the batch one by one
+      // Process each invoice sequentially
       for (let i = 0; i < totalInvoices; i++) {
-        // Update progress
-        setBatchProgress({ current: i + 1, total: totalInvoices });
+        // Check if process was aborted
+        if (batchAborted) {
+          console.log("Batch process aborted by user");
+          break;
+        }
         
+        // Update progress display
+        setBatchProgress({ current: i + 1, total: totalInvoices });
         console.log(`Processing invoice ${i + 1} of ${totalInvoices}`);
         
-        // If not on the current invoice index, navigate to it
-        while (invoiceBatch.currentIndex !== i) {
-          if (invoiceBatch.currentIndex < i) {
-            selectNextInvoice();
-          } else {
-            selectPreviousInvoice();
-          }
-          
-          // Wait for the UI to update (increased wait time)
-          await waitForUI(500);
+        // Navigate to the invoice (starting from index 0)
+        // First go back to the first invoice
+        while (invoiceBatch.currentIndex > 0) {
+          selectPreviousInvoice();
+          await waitForUI(300);
         }
         
-        // Generate PDF for the current invoice
+        // Then move forward to the target invoice
+        for (let j = 0; j < i; j++) {
+          selectNextInvoice();
+          await waitForUI(300);
+        }
+        
+        // Wait for UI to render
+        await waitForUI(1200);
+        
+        // Generate PDF
         const pdfBlob = await generateInvoicePDF(invoiceBatch.invoices[i], i);
         
-        if (pdfBlob) {
+        if (pdfBlob && pdfBlob.size > 1000) { // Ensure PDF is not empty (>1KB)
           const filename = `Invoice_${invoiceBatch.invoices[i].invoiceNumber}.pdf`;
           zip.file(filename, pdfBlob);
-          console.log(`Added invoice ${filename} to ZIP, blob size: ${pdfBlob.size}`);
+          console.log(`Added invoice ${filename} to ZIP, blob size: ${pdfBlob.size} bytes`);
+          successCount++;
         } else {
           console.error(`Failed to generate PDF for invoice ${i + 1}`);
+          failCount++;
         }
         
-        // Wait before processing the next invoice to ensure UI updates
+        // Wait before processing next invoice
         await waitForUI(800);
       }
       
-      // Return to the original invoice after all processing is done
-      console.log(`Returning to original invoice at index ${currentIndex}`);
-      
-      while (invoiceBatch.currentIndex !== currentIndex) {
-        if (invoiceBatch.currentIndex > currentIndex) {
-          selectPreviousInvoice();
-        } else {
-          selectNextInvoice();
-        }
-        await waitForUI(300);
+      // Return to original invoice
+      // First go back to the first invoice
+      while (invoiceBatch.currentIndex > 0) {
+        selectPreviousInvoice();
+        await waitForUI(200);
       }
       
-      // Generate and save the ZIP file
+      // Then move forward to the original invoice
+      for (let j = 0; j < originalIndex; j++) {
+        selectNextInvoice();
+        await waitForUI(200);
+      }
+      
+      // Generate and save ZIP file
       console.log("Generating ZIP file...");
       const content = await zip.generateAsync({ type: "blob" });
       console.log("ZIP file generated, size:", content.size);
       
-      if (content.size <= 22) {
-        throw new Error(`Generated ZIP file is too small (${content.size} bytes). It might be empty.`);
+      if (content.size <= 22 || successCount === 0) {
+        throw new Error(`Generated ZIP file is empty or too small (${content.size} bytes).`);
       }
       
       saveAs(content, "Invoices.zip");
       
       toast({
         title: "Batch Download Complete",
-        description: `Successfully created a ZIP file with ${totalInvoices} invoices`,
+        description: `Successfully added ${successCount} invoice(s) to ZIP file${failCount > 0 ? `, ${failCount} failed` : ''}`,
       });
     } catch (error) {
       console.error("Error generating batch ZIP:", error);
       toast({
         title: "Batch Processing Error",
-        description: "There was a problem creating the invoice batch ZIP file",
+        description: String(error) || "Problem creating the invoice batch ZIP file",
         variant: "destructive"
       });
     } finally {
       setBatchProgress({ current: 0, total: 0 });
       setIsBatchGenerating(false);
+    }
+  };
+
+  // Cancel batch processing
+  const cancelBatchProcess = () => {
+    if (isBatchGenerating) {
+      setBatchAborted(true);
+      toast({
+        title: "Cancelling Batch Process",
+        description: "Stopping the batch process after current invoice completes",
+      });
     }
   };
 
@@ -308,7 +342,7 @@ const ExportInvoice = () => {
                   <Button 
                     variant="outline" 
                     size="icon"
-                    disabled={invoiceBatch.currentIndex === 0}
+                    disabled={invoiceBatch.currentIndex === 0 || isBatchGenerating}
                     onClick={selectPreviousInvoice}
                   >
                     <ArrowLeft className="h-4 w-4" />
@@ -316,7 +350,7 @@ const ExportInvoice = () => {
                   <Button 
                     variant="outline" 
                     size="icon"
-                    disabled={invoiceBatch.currentIndex === invoiceBatch.invoices.length - 1}
+                    disabled={invoiceBatch.currentIndex === invoiceBatch.invoices.length - 1 || isBatchGenerating}
                     onClick={selectNextInvoice}
                   >
                     <ArrowRight className="h-4 w-4" />
@@ -330,8 +364,8 @@ const ExportInvoice = () => {
         <Tabs defaultValue="preview" value={activeTab} onValueChange={setActiveTab}>
           <div className="flex justify-between items-center mb-6">
             <TabsList>
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="actions">Export Options</TabsTrigger>
+              <TabsTrigger value="preview" disabled={isBatchGenerating}>Preview</TabsTrigger>
+              <TabsTrigger value="actions" disabled={isBatchGenerating}>Export Options</TabsTrigger>
             </TabsList>
           </div>
 
@@ -370,7 +404,7 @@ const ExportInvoice = () => {
                     <Button 
                       onClick={handleGeneratePDF} 
                       className="w-full"
-                      disabled={isGenerating}
+                      disabled={isGenerating || isBatchGenerating}
                     >
                       {isGenerating ? "Generating..." : "Download PDF"}
                     </Button>
@@ -386,7 +420,11 @@ const ExportInvoice = () => {
                     <p className="text-muted-foreground mb-4">
                       Print your invoice directly from your browser.
                     </p>
-                    <Button onClick={printInvoice} className="w-full">
+                    <Button 
+                      onClick={printInvoice} 
+                      className="w-full"
+                      disabled={isBatchGenerating}
+                    >
                       Print Invoice
                     </Button>
                   </div>
@@ -401,7 +439,11 @@ const ExportInvoice = () => {
                     <p className="text-muted-foreground mb-4">
                       Send the invoice directly to your client's email.
                     </p>
-                    <Button onClick={sendInvoiceByEmail} className="w-full">
+                    <Button 
+                      onClick={sendInvoiceByEmail} 
+                      className="w-full"
+                      disabled={isBatchGenerating}
+                    >
                       Send by Email
                     </Button>
                   </div>
@@ -418,34 +460,49 @@ const ExportInvoice = () => {
                   </p>
                   <div className="flex flex-col space-y-4">
                     <div className="flex flex-wrap gap-4">
-                      <Button 
-                        onClick={generateBatchZip}
-                        disabled={isBatchGenerating}
-                        className="flex items-center gap-2"
-                      >
-                        <FileArchive className="h-4 w-4" />
-                        {isBatchGenerating 
-                          ? `Creating ZIP (${batchProgress.current}/${batchProgress.total})...` 
-                          : "Download All as ZIP"}
-                      </Button>
-                      <Button variant="outline" onClick={() => {
-                        toast({
-                          title: "Batch Email",
-                          description: `Sending all ${invoiceBatch.invoices.length} invoices to respective clients`,
-                        });
-                      }}>
-                        Email All
-                      </Button>
+                      {isBatchGenerating ? (
+                        <Button 
+                          variant="destructive" 
+                          onClick={cancelBatchProcess}
+                          className="flex items-center gap-2"
+                        >
+                          Cancel Processing
+                        </Button>
+                      ) : (
+                        <>
+                          <Button 
+                            onClick={generateBatchZip}
+                            className="flex items-center gap-2"
+                          >
+                            <FileArchive className="h-4 w-4" />
+                            Download All as ZIP
+                          </Button>
+                          <Button variant="outline" 
+                            onClick={() => {
+                              toast({
+                                title: "Batch Email",
+                                description: `Sending all ${invoiceBatch.invoices.length} invoices to respective clients`,
+                              });
+                            }}
+                            disabled={isBatchGenerating}
+                          >
+                            Email All
+                          </Button>
+                        </>
+                      )}
                     </div>
                     
                     {isBatchGenerating && (
-                      <div className="w-full bg-gray-200 rounded-full h-2.5 mt-2">
-                        <div 
-                          className="bg-primary h-2.5 rounded-full" 
-                          style={{ 
-                            width: `${batchProgress.total ? (batchProgress.current / batchProgress.total) * 100 : 0}%` 
-                          }}
-                        ></div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          {batchProgress.current > 0 
+                            ? `Creating ZIP (${batchProgress.current}/${batchProgress.total})...` 
+                            : "Preparing batch process..."}
+                        </p>
+                        <Progress 
+                          value={batchProgress.total ? (batchProgress.current / batchProgress.total) * 100 : 0}
+                          className="h-2"
+                        />
                       </div>
                     )}
                   </div>
